@@ -93,6 +93,9 @@ sharedGoalsRouter.post('/push', requireManagerOrAdmin, async (req: Request, res:
       });
     }
 
+    // Determine if the shared goal should be locked based on the target sheet's status
+    const shouldLockSharedGoal = targetSheet.status === 'LOCKED' || targetSheet.status === 'APPROVED';
+
     // Create the Goal record on the target sheet with isShared=true
     const sharedGoalRecord = await prisma.goal.create({
       data: {
@@ -105,7 +108,7 @@ sharedGoalsRouter.post('/push', requireManagerOrAdmin, async (req: Request, res:
         weightage: 10, // default; employee-adjustable
         isShared: true,
         sharedFromId: sourceGoalId,
-        isLocked: false,
+        isLocked: shouldLockSharedGoal, // Auto-lock if target sheet is already locked
       },
     });
 

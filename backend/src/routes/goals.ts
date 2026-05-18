@@ -306,32 +306,57 @@ goalsRouter.put('/:goalId', async (req: Request, res: Response) => {
       },
     });
   } else {
-    // Unlocked goals: standard employee edit flow
+    // Unlocked goals: employee or manager/admin edit flow
     
-    // Block if sheet is not in an editable state
-    if (!EDITABLE_STATUSES.includes(goal.goalSheet.status as (typeof EDITABLE_STATUSES)[number])) {
-      res.status(403).json({
-        error: `Cannot edit goals on a sheet with status ${goal.goalSheet.status}. Sheet must be in DRAFT or REWORK status.`,
+    // Manager/Admin can edit any unlocked goal regardless of sheet status
+    if (isManagerOrAdmin && !isOwner) {
+      // Verify manager relationship or admin role
+      if (!isAdmin && !isManager) {
+        res.status(403).json({ error: 'You do not have permission to edit this goal.' });
+        return;
+      }
+
+      // Create audit log for manager/admin edits on unlocked goals
+      await prisma.auditLog.create({
+        data: {
+          entityType: 'Goal',
+          entityId: goalId,
+          userId: req.user.id,
+          action: 'UPDATE',
+          oldValue: goal as object,
+          newValue: { ...goal, ...parsed.data } as object,
+          reason: `Unlocked goal edited by ${req.user.role}`,
+          timestamp: new Date(),
+        },
       });
-      return;
-    }
-
-    // Verify ownership — goal must belong to the authenticated user's sheet
-    if (!isOwner && !isManagerOrAdmin) {
-      res.status(403).json({ error: 'You do not have access to this goal' });
-      return;
-    }
-
-    // Block restricted field changes on shared goals — only weightage and status are editable
-    if (goal.isShared && isOwner) {
-      const allowedFields = ['weightage', 'status'];
-      const attemptedFields = Object.keys(parsed.data);
-      const blockedFields = attemptedFields.filter((f) => !allowedFields.includes(f));
-      if (blockedFields.length > 0) {
+    } else {
+      // Employee editing their own goal
+      
+      // Block if sheet is not in an editable state
+      if (!EDITABLE_STATUSES.includes(goal.goalSheet.status as (typeof EDITABLE_STATUSES)[number])) {
         res.status(403).json({
-          error: `Cannot modify ${blockedFields.join(', ')} on a shared goal. Only weightage and status can be changed.`,
+          error: `Cannot edit goals on a sheet with status ${goal.goalSheet.status}. Sheet must be in DRAFT or REWORK status.`,
         });
         return;
+      }
+
+      // Verify ownership — goal must belong to the authenticated user's sheet
+      if (!isOwner) {
+        res.status(403).json({ error: 'You do not have access to this goal' });
+        return;
+      }
+
+      // Block restricted field changes on shared goals — only weightage and status are editable
+      if (goal.isShared) {
+        const allowedFields = ['weightage', 'status'];
+        const attemptedFields = Object.keys(parsed.data);
+        const blockedFields = attemptedFields.filter((f) => !allowedFields.includes(f));
+        if (blockedFields.length > 0) {
+          res.status(403).json({
+            error: `Cannot modify ${blockedFields.join(', ')} on a shared goal. Only weightage and status can be changed.`,
+          });
+          return;
+        }
       }
     }
   }

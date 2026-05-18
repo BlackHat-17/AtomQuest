@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "prisma": {
-    "seed": "tsx prisma/seed.ts"
+    "seed": "npx tsx prisma/seed.ts"
   },
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -15,9 +15,10 @@
     "db:migrate": "prisma migrate dev",
     "db:push": "prisma db push",
     "db:studio": "prisma studio",
-    "db:seed": "tsx prisma/seed.ts",
-    "db:clear": "tsx prisma/clear-achievements.ts",
-    "db:reset-data": "tsx prisma/clear-achievements.ts && tsx prisma/seed.ts",
+    "db:seed": "npx tsx prisma/seed.ts",
+    "db:clear": "npx tsx prisma/clear-achievements.ts",
+    "db:reset-data": "npx tsx prisma/clear-achievements.ts && npx tsx prisma/seed.ts",
+    "db:check-status": "npx tsx prisma/check-goal-status.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
