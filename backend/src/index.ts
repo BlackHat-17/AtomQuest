@@ -2,6 +2,7 @@
 import './lib/env';
 
 import { createApp } from './app';
+import { startEscalationJob } from './jobs/escalationJob.js';
 
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
@@ -11,6 +12,9 @@ const server = app.listen(PORT, () => {
   console.warn(`[server] Goal Tracking Portal API running on http://localhost:${PORT}`);
   console.warn(`[server] Health check: http://localhost:${PORT}/health`);
   console.warn(`[server] Environment: ${process.env.NODE_ENV ?? 'development'}`);
+
+  // Start background jobs
+  startEscalationJob();
 });
 
 // Graceful shutdown

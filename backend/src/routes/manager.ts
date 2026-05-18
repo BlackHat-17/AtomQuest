@@ -15,11 +15,18 @@ managerRouter.get('/team', async (req: Request, res: Response) => {
 
   const managerId = req.user.id;
 
-  // Find the active cycle (any phase)
-  const activeCycle = await prisma.goalCycle.findFirst({
-    where: { isActive: true },
-    orderBy: { createdAt: 'desc' },
+  // Find the active GOAL_SETTING cycle first (priority for goal sheet approval)
+  // If not found, fall back to any active cycle
+  let activeCycle = await prisma.goalCycle.findFirst({
+    where: { isActive: true, phase: 'GOAL_SETTING' },
   });
+
+  if (!activeCycle) {
+    activeCycle = await prisma.goalCycle.findFirst({
+      where: { isActive: true },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 
   // Find the active quarterly cycle (Q1–Q4) for check-in status
   // A quarterly cycle is active when isActive=true and phase is one of Q1–Q4

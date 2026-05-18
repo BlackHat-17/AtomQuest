@@ -11,8 +11,11 @@ import { achievementsRouter } from './routes/achievements.js';
 import { checkinsRouter } from './routes/checkins.js';
 import { reportsRouter } from './routes/reports.js';
 import { adminRouter } from './routes/admin.js';
+import { notificationsRouter } from './routes/notifications.js';
+import { escalationRulesRouter, escalationLogsRouter } from './routes/escalation.js';
+import { analyticsRouter } from './routes/analytics.js';
 import { authenticate } from './middleware/authenticate.js';
-import { requireManagerOrAdmin } from './middleware/authorize.js';
+import { requireManagerOrAdmin, requireAdmin } from './middleware/authorize.js';
 
 /**
  * Creates and configures the Express application.
@@ -64,7 +67,10 @@ export function createApp(): express.Application {
   app.use('/api/achievements', authenticate, achievementsRouter);
   app.use('/api/reports', authenticate, reportsRouter);
   app.use('/api/admin', authenticate, adminRouter);
-  // app.use('/api/analytics', analyticsRouter);
+  app.use('/api/admin/notifications', authenticate, requireAdmin, notificationsRouter);
+  app.use('/api/admin/escalation-rules', authenticate, requireAdmin, escalationRulesRouter);
+  app.use('/api/admin/escalation-logs', authenticate, requireAdmin, escalationLogsRouter);
+  app.use('/api/analytics', authenticate, requireAdmin, analyticsRouter);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

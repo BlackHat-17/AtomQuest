@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { validateGoalSheet } from '../lib/validation.js';
 import { requireManagerOrAdmin, requireAdmin } from '../middleware/authorize.js';
+import { notifyService } from '../services/notifyService.js';
 
 export const goalsRouter = Router();
 
@@ -57,26 +58,27 @@ goalsRouter.get('/my-sheet', async (req: Request, res: Response) => {
 
   const employeeId = req.user.id;
 
-  // Find the active GOAL_SETTING cycle
-  const activeCycle = await prisma.goalCycle.findFirst({
-    where: { phase: 'GOAL_SETTING', isActive: true },
-  });
-
-  if (!activeCycle) {
-    res.status(404).json({ error: 'No active goal-setting cycle found' });
-    return;
-  }
-
-  // Find or create a DRAFT sheet for this employee in the active cycle
-  let sheet = await prisma.goalSheet.findUnique({
-    where: { employeeId_cycleId: { employeeId, cycleId: activeCycle.id } },
+  // First, try to find the employee's most recent goal sheet (any cycle)
+  let sheet = await prisma.goalSheet.findFirst({
+    where: { employeeId },
     include: {
       goals: { orderBy: { createdAt: 'asc' } },
       cycle: true,
     },
+    orderBy: { createdAt: 'desc' },
   });
 
+  // If no sheet exists, find the active GOAL_SETTING cycle and create one
   if (!sheet) {
+    const activeCycle = await prisma.goalCycle.findFirst({
+      where: { phase: 'GOAL_SETTING', isActive: true },
+    });
+
+    if (!activeCycle) {
+      res.status(404).json({ error: 'No active goal-setting cycle found' });
+      return;
+    }
+
     sheet = await prisma.goalSheet.create({
       data: {
         employeeId,
@@ -264,7 +266,7 @@ goalsRouter.put('/:goalId', async (req: Request, res: Response) => {
   // Fetch goal with its sheet to verify ownership and status
   const goal = await prisma.goal.findUnique({
     where: { id: goalId },
-    include: { goalSheet: true },
+    include: { goalSheet: { include: { employee: true } } },
   });
 
   if (!goal) {
@@ -272,36 +274,65 @@ goalsRouter.put('/:goalId', async (req: Request, res: Response) => {
     return;
   }
 
-  // Block if goal is locked
+  const isManagerOrAdmin = req.user.role === 'MANAGER' || req.user.role === 'ADMIN';
+  const isManager = req.user.role === 'MANAGER' && goal.goalSheet.employee.managerId === req.user.id;
+  const isAdmin = req.user.role === 'ADMIN';
+  const isOwner = goal.goalSheet.employeeId === req.user.id;
+
+  // If goal is locked, only manager/admin can edit
   if (goal.isLocked) {
-    res.status(403).json({ error: 'This goal is locked and cannot be modified.' });
-    return;
-  }
+    if (!isManagerOrAdmin) {
+      res.status(403).json({ error: 'This goal is locked and cannot be modified by employees.' });
+      return;
+    }
 
-  // Block if sheet is not in an editable state
-  if (!EDITABLE_STATUSES.includes(goal.goalSheet.status as (typeof EDITABLE_STATUSES)[number])) {
-    res.status(403).json({
-      error: `Cannot edit goals on a sheet with status ${goal.goalSheet.status}. Sheet must be in DRAFT or REWORK status.`,
+    // Verify manager relationship or admin role
+    if (!isAdmin && !isManager) {
+      res.status(403).json({ error: 'You do not have permission to edit this locked goal.' });
+      return;
+    }
+
+    // Create audit log for locked goal edits
+    await prisma.auditLog.create({
+      data: {
+        entityType: 'Goal',
+        entityId: goalId,
+        userId: req.user.id,
+        action: 'UPDATE',
+        oldValue: goal as object,
+        newValue: { ...goal, ...parsed.data } as object,
+        reason: `Locked goal edited by ${req.user.role}`,
+        timestamp: new Date(),
+      },
     });
-    return;
-  }
-
-  // Verify ownership — goal must belong to the authenticated user's sheet
-  if (goal.goalSheet.employeeId !== req.user.id) {
-    res.status(403).json({ error: 'You do not have access to this goal' });
-    return;
-  }
-
-  // Block restricted field changes on shared goals — only weightage and status are editable
-  if (goal.isShared) {
-    const allowedFields = ['weightage', 'status'];
-    const attemptedFields = Object.keys(parsed.data);
-    const blockedFields = attemptedFields.filter((f) => !allowedFields.includes(f));
-    if (blockedFields.length > 0) {
+  } else {
+    // Unlocked goals: standard employee edit flow
+    
+    // Block if sheet is not in an editable state
+    if (!EDITABLE_STATUSES.includes(goal.goalSheet.status as (typeof EDITABLE_STATUSES)[number])) {
       res.status(403).json({
-        error: `Cannot modify ${blockedFields.join(', ')} on a shared goal. Only weightage and status can be changed.`,
+        error: `Cannot edit goals on a sheet with status ${goal.goalSheet.status}. Sheet must be in DRAFT or REWORK status.`,
       });
       return;
+    }
+
+    // Verify ownership — goal must belong to the authenticated user's sheet
+    if (!isOwner && !isManagerOrAdmin) {
+      res.status(403).json({ error: 'You do not have access to this goal' });
+      return;
+    }
+
+    // Block restricted field changes on shared goals — only weightage and status are editable
+    if (goal.isShared && isOwner) {
+      const allowedFields = ['weightage', 'status'];
+      const attemptedFields = Object.keys(parsed.data);
+      const blockedFields = attemptedFields.filter((f) => !allowedFields.includes(f));
+      if (blockedFields.length > 0) {
+        res.status(403).json({
+          error: `Cannot modify ${blockedFields.join(', ')} on a shared goal. Only weightage and status can be changed.`,
+        });
+        return;
+      }
     }
   }
 
@@ -409,6 +440,17 @@ goalsRouter.post('/:sheetId/submit', async (req: Request, res: Response) => {
     data: { status: 'SUBMITTED', submittedAt: new Date() },
     include: { goals: { orderBy: { createdAt: 'asc' } }, cycle: true },
   });
+
+  // Fire-and-forget: notify manager that a goal sheet has been submitted
+  const employee = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: { managerId: true },
+  });
+  if (employee?.managerId) {
+    notifyService
+      .goalSubmitted(sheetId, req.user.id, employee.managerId)
+      .catch(() => {});
+  }
 
   res.json(updated);
 });
@@ -521,6 +563,9 @@ goalsRouter.post(
       include: { goals: { orderBy: { createdAt: 'asc' } }, cycle: true },
     });
 
+    // Fire-and-forget: notify employee that their goal sheet has been approved
+    notifyService.goalApproved(sheetId, sheet.employee.id).catch(() => {});
+
     res.json(updated);
   }
 );
@@ -580,6 +625,11 @@ goalsRouter.post(
       data: { status: 'REWORK', reworkComment: parsed.data.comment },
       include: { goals: { orderBy: { createdAt: 'asc' } }, cycle: true },
     });
+
+    // Fire-and-forget: notify employee that their goal sheet needs rework
+    notifyService
+      .goalReworked(sheetId, sheet.employee.id, parsed.data.comment)
+      .catch(() => {});
 
     res.json(updated);
   }

@@ -51,6 +51,18 @@ enum Quarter {
   Q4
 }
 
+enum TriggerType {
+  GOAL_NOT_SUBMITTED
+  GOAL_NOT_APPROVED
+  CHECKIN_NOT_COMPLETED
+}
+
+enum EscalationStatus {
+  PENDING
+  RESOLVED
+  IGNORED
+}
+
 // ─── Models ───────────────────────────────────────────────────────────────────
 
 model User {
@@ -68,13 +80,17 @@ model User {
   updatedAt    DateTime @updatedAt
 
   // Relations
-  goalSheets      GoalSheet[]   @relation("EmployeeGoalSheets")
-  approvedSheets  GoalSheet[]   @relation("ApproverGoalSheets")
-  createdCycles   GoalCycle[]   @relation("CycleCreator")
-  checkIns        CheckIn[]     @relation("ManagerCheckIns")
-  auditLogs       AuditLog[]    @relation("UserAuditLogs")
-  achievements    Achievement[] @relation("AchievementUpdater")
-  sharedGoals     SharedGoal[]  @relation("SharedGoalTarget")
+  goalSheets      GoalSheet[]      @relation("EmployeeGoalSheets")
+  approvedSheets  GoalSheet[]      @relation("ApproverGoalSheets")
+  createdCycles   GoalCycle[]      @relation("CycleCreator")
+  checkIns        CheckIn[]        @relation("ManagerCheckIns")
+  auditLogs       AuditLog[]       @relation("UserAuditLogs")
+  achievements    Achievement[]    @relation("AchievementUpdater")
+  sharedGoals     SharedGoal[]     @relation("SharedGoalTarget")
+
+  escalationRulesCreated EscalationRule[] @relation("EscalationRuleCreator")
+  escalationTargets      EscalationLog[]  @relation("EscalationTarget")
+  escalationNotified     EscalationLog[]  @relation("EscalationNotified")
 }
 
 model GoalCycle {
@@ -191,4 +207,32 @@ model SharedGoal {
   createdAt        DateTime  @default(now())
 
   @@unique([sourceGoalId, targetEmployeeId, cycleId])
+}
+
+model EscalationRule {
+  id            String      @id @default(uuid())
+  name          String
+  triggerType   TriggerType
+  thresholdDays Int
+  intervalDays  Int         @default(1)
+  chain         String[]    // ['EMPLOYEE', 'MANAGER', 'SKIP_LEVEL', 'HR']
+  isActive      Boolean     @default(true)
+  createdById   String
+  createdBy     User        @relation("EscalationRuleCreator", fields: [createdById], references: [id])
+  createdAt     DateTime    @default(now())
+  logs          EscalationLog[]
+}
+
+model EscalationLog {
+  id             String           @id @default(uuid())
+  ruleId         String
+  rule           EscalationRule   @relation(fields: [ruleId], references: [id])
+  targetUserId   String
+  targetUser     User             @relation("EscalationTarget", fields: [targetUserId], references: [id])
+  notifiedUserId String
+  notifiedUser   User             @relation("EscalationNotified", fields: [notifiedUserId], references: [id])
+  level          Int
+  triggeredAt    DateTime         @default(now())
+  resolvedAt     DateTime?
+  status         EscalationStatus @default(PENDING)
 }

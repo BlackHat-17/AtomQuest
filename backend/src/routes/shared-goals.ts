@@ -12,7 +12,7 @@ const pushGoalSchema = z.object({
   targetEmployeeIds: z
     .array(z.string().uuid('Invalid employee ID'))
     .min(1, 'At least one target employee is required'),
-  cycleId: z.string().uuid('Invalid cycle ID'),
+  cycleId: z.string().uuid('Invalid cycle ID - please ensure an active goal cycle exists'),
 });
 
 const updateWeightageSchema = z.object({
@@ -33,7 +33,12 @@ sharedGoalsRouter.post('/push', requireManagerOrAdmin, async (req: Request, res:
 
   const parsed = pushGoalSchema.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Invalid request' });
+    console.error('Push goal validation error:', parsed.error);
+    console.error('Request body:', req.body);
+    res.status(400).json({ 
+      error: parsed.error.issues[0]?.message ?? 'Invalid request',
+      details: parsed.error.issues 
+    });
     return;
   }
 

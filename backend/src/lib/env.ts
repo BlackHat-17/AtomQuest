@@ -27,6 +27,24 @@ const envSchema = z.object({
 
   // Environment
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
+
+  // Microsoft Entra ID (Azure AD) SSO — all optional; SSO is disabled when absent
+  AAD_TENANT_ID: z.string().optional(),
+  AAD_CLIENT_ID: z.string().optional(),
+  AAD_CLIENT_SECRET: z.string().optional(),
+  AAD_GROUP_ADMIN: z.string().optional(),
+  AAD_GROUP_MANAGER: z.string().optional(),
+  AAD_GROUP_EMPLOYEE: z.string().optional(),
+
+  // Email notifications via SMTP — all optional; email is disabled when SMTP_HOST is absent
+  SMTP_HOST: z.string().optional(),
+  SMTP_PORT: z.string().regex(/^\d+$/).optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASS: z.string().optional(),
+  SMTP_FROM: z.string().optional(),
+
+  // Microsoft Teams notifications — optional; Teams is disabled when absent
+  TEAMS_WEBHOOK_URL: z.string().url().optional().or(z.literal('')).transform(v => v || undefined),
 });
 
 export type Env = z.infer<typeof envSchema>;

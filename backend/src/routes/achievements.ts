@@ -2,6 +2,7 @@ import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
 import { prisma } from '../lib/prisma.js';
 import { computeScore } from '../lib/scoring.js';
+import { notifyService } from '../services/notifyService.js';
 
 export const achievementsRouter = Router();
 
@@ -135,6 +136,17 @@ achievementsRouter.put('/:goalId/:quarter', async (req: Request, res: Response) 
         },
       });
     }
+  }
+
+  // Fire-and-forget: notify manager that achievement data has been updated
+  const employeeWithManager = await prisma.user.findUnique({
+    where: { id: req.user.id },
+    select: { managerId: true },
+  });
+  if (employeeWithManager?.managerId) {
+    notifyService
+      .achievementUpdated(goal.goalSheet.id, req.user.id, employeeWithManager.managerId)
+      .catch(() => {});
   }
 
   res.json(achievement);
