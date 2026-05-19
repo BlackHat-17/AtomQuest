@@ -2,7 +2,7 @@
 // A palette of distinct colours for up to 8 goal segments.
 const SEGMENT_COLORS = [
   'bg-blue-500',
-  'bg-purple-500',
+  'bg-[#2d1238]',
   'bg-pink-500',
   'bg-orange-500',
   'bg-teal-500',
@@ -13,7 +13,7 @@ const SEGMENT_COLORS = [
 
 const LEGEND_COLORS = [
   'bg-blue-500',
-  'bg-purple-500',
+  'bg-[#2d1238]',
   'bg-pink-500',
   'bg-orange-500',
   'bg-teal-500',

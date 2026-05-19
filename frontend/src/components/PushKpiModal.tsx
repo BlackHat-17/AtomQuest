@@ -53,13 +53,11 @@ export function PushKpiModal({ open, onClose, onSuccess }: PushKpiModalProps) {
     setSheetLoading(true);
     setSheetError(null);
     try {
-      const { data } = await api.get<GoalSheet>('/goals/my-sheet');
+      const { data } = await api.get<GoalSheet & { goals: Goal[] }>('/goals/my-sheet');
       setMySheet(data);
     } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-        'Failed to load your goal sheet';
-      setSheetError(message);
+      const errMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? '';
+      setSheetError(errMsg || 'Failed to load your goal sheet');
     } finally {
       setSheetLoading(false);
     }
@@ -73,6 +71,8 @@ export function PushKpiModal({ open, onClose, onSuccess }: PushKpiModalProps) {
       setTeam(data.team);
       if (data.cycle) {
         setCycleId(data.cycle.id);
+      } else {
+        setTeamError('No active goal cycle found. Please contact your administrator to activate a cycle.');
       }
     } catch (err: unknown) {
       const message =
@@ -127,18 +127,32 @@ export function PushKpiModal({ open, onClose, onSuccess }: PushKpiModalProps) {
 
     setSubmitLoading(true);
     setSubmitError(null);
+    
+    const payload = {
+      sourceGoalId: selectedGoalId,
+      targetEmployeeIds: Array.from(selectedEmployeeIds),
+      cycleId,
+    };
+    
+    console.log('Push KPI payload:', payload);
+    
     try {
-      await api.post('/shared-goals/push', {
-        sourceGoalId: selectedGoalId,
-        targetEmployeeIds: Array.from(selectedEmployeeIds),
-        cycleId,
-      });
+      await api.post('/shared-goals/push', payload);
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      const message =
-        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ??
-        'Failed to push KPI. Please try again.';
+      console.error('Push KPI error:', err);
+      console.error('Error response:', (err as any)?.response);
+      
+      const axiosError = err as { response?: { data?: { error?: string }; status?: number } };
+      let message = 'Failed to push KPI. Please try again.';
+      
+      if (axiosError.response?.data?.error) {
+        message = axiosError.response.data.error;
+      } else if (axiosError.response?.status === 400) {
+        message = 'Invalid request data. Please check the debug info below.';
+      }
+      
       setSubmitError(message);
     } finally {
       setSubmitLoading(false);
@@ -154,7 +168,7 @@ export function PushKpiModal({ open, onClose, onSuccess }: PushKpiModalProps) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="push-kpi-modal-title"
@@ -218,9 +232,16 @@ export function PushKpiModal({ open, onClose, onSuccess }: PushKpiModalProps) {
                   {sheetError}
                 </div>
               ) : goals.length === 0 ? (
-                <p className="py-6 text-center text-sm text-gray-500">
-                  You have no goals to push. Add goals to your sheet first.
-                </p>
+                <div className="py-6 text-center">
+                  <p className="text-sm text-gray-500 mb-2">
+                    You have no goals to push.
+                  </p>
+                  <p className="text-xs text-gray-400">
+                    To push a KPI, you need goals on your own goal sheet. Go to{' '}
+                    <a href="/employee/goals" className="text-indigo-600 underline">My Goals</a>{' '}
+                    to add goals first.
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-2">
                   <p className="mb-3 text-sm text-gray-600">
@@ -320,9 +341,12 @@ export function PushKpiModal({ open, onClose, onSuccess }: PushKpiModalProps) {
                 </div>
               )}
 
-              {!cycleId && !teamLoading && (
-                <div className="mt-3 rounded-md border border-yellow-300 bg-yellow-50 p-3 text-sm text-yellow-700">
-                  No active cycle found. Cannot push KPI without an active cycle.
+              {!cycleId && !teamLoading && !teamError && (
+                <div className="mt-3 rounded-md border border-amber-300 bg-amber-50 p-3">
+                  <p className="text-sm font-semibold text-amber-800">No Active Cycle</p>
+                  <p className="text-xs text-amber-700 mt-1">
+                    There is no active goal cycle. Please contact your administrator to activate a cycle before pushing KPIs.
+                  </p>
                 </div>
               )}
             </>
@@ -330,8 +354,21 @@ export function PushKpiModal({ open, onClose, onSuccess }: PushKpiModalProps) {
 
           {/* Submit error */}
           {submitError && (
-            <div className="mt-3 rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-700">
-              {submitError}
+            <div className="mt-3 rounded-md border border-red-300 bg-red-50 p-3">
+              <p className="text-sm font-semibold text-red-700">Error</p>
+              <p className="mt-1 text-sm text-red-600">{submitError}</p>
+              <details className="mt-2">
+                <summary className="cursor-pointer text-xs text-red-500 hover:text-red-700">
+                  Debug info
+                </summary>
+                <pre className="mt-1 text-xs text-red-600 overflow-auto">
+                  {JSON.stringify({
+                    selectedGoalId,
+                    selectedEmployeeIds: Array.from(selectedEmployeeIds),
+                    cycleId,
+                  }, null, 2)}
+                </pre>
+              </details>
             </div>
           )}
         </div>

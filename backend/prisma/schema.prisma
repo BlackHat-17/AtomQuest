@@ -1,13 +1,241 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
+model User {
+  id                     String            @id @default(uuid())
+  name                   String
+  email                  String            @unique
+  password               String?
+  role                   Role
+  managerId              String?
+  department             String
+  azureAdId              String?           @unique
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
+  achievements           Achievement[]     @relation("AchievementUpdater")
+  auditLogs              AuditLog[]        @relation("UserAuditLogs")
+  checkIns               CheckIn[]         @relation("ManagerCheckIns")
+  escalationNotified     EscalationLog[]   @relation("EscalationNotified")
+  escalationTargets      EscalationLog[]   @relation("EscalationTarget")
+  escalationRulesCreated EscalationRule[]  @relation("EscalationRuleCreator")
+  createdCycles          GoalCycle[]       @relation("CycleCreator")
+  approvedSheets         GoalSheet[]       @relation("ApproverGoalSheets")
+  goalSheets             GoalSheet[]       @relation("EmployeeGoalSheets")
+  sharedGoals            SharedGoal[]      @relation("SharedGoalTarget")
+  manager                User?             @relation("ManagerEmployee", fields: [managerId], references: [id])
+  subordinates           User[]            @relation("ManagerEmployee")
+  createdNewCycles       NewGoalCycle[]    @relation("NewCycleCreator")
+  stageTransitions       StageTransition[] @relation("StageTransitionInitiator")
 }
 
-// ─── Enums ────────────────────────────────────────────────────────────────────
+model GoalCycle {
+  id          String       @id @default(uuid())
+  year        Int
+  phase       Phase
+  windowOpen  DateTime
+  windowClose DateTime
+  isActive    Boolean      @default(false)
+  createdById String
+  createdAt   DateTime     @default(now())
+  createdBy   User         @relation("CycleCreator", fields: [createdById], references: [id])
+  goalSheets  GoalSheet[]  @relation("CycleGoalSheets")
+  sharedGoals SharedGoal[] @relation("CycleSharedGoals")
+}
+
+model GoalSheet {
+  id            String        @id @default(uuid())
+  employeeId    String
+  cycleId       String
+  status        SheetStatus   @default(DRAFT)
+  reworkComment String?
+  submittedAt   DateTime?
+  approvedAt    DateTime?
+  approvedById  String?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  newCycleId    String?
+  checkIns      CheckIn[]     @relation("SheetCheckIns")
+  goals         Goal[]        @relation("SheetGoals")
+  approvedBy    User?         @relation("ApproverGoalSheets", fields: [approvedById], references: [id])
+  cycle         GoalCycle     @relation("CycleGoalSheets", fields: [cycleId], references: [id])
+  employee      User          @relation("EmployeeGoalSheets", fields: [employeeId], references: [id])
+  newCycle      NewGoalCycle? @relation("NewCycleGoalSheets", fields: [newCycleId], references: [id])
+
+  @@unique([employeeId, cycleId])
+}
+
+model Goal {
+  id           String        @id @default(uuid())
+  goalSheetId  String
+  thrustArea   String
+  title        String
+  description  String
+  uomType      UomType
+  target       String
+  weightage    Decimal       @db.Decimal(5, 2)
+  status       GoalStatus    @default(NOT_STARTED)
+  isShared     Boolean       @default(false)
+  sharedFromId String?
+  isLocked     Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  achievements Achievement[] @relation("GoalAchievements")
+  goalSheet    GoalSheet     @relation("SheetGoals", fields: [goalSheetId], references: [id], onDelete: Cascade)
+  sharedFrom   Goal?         @relation("SharedGoal", fields: [sharedFromId], references: [id])
+  sharedCopies Goal[]        @relation("SharedGoal")
+  sharedGoals  SharedGoal[]  @relation("SourceSharedGoals")
+}
+
+model Achievement {
+  id          String   @id @default(uuid())
+  goalId      String
+  quarter     Quarter
+  actual      String
+  score       Decimal  @db.Decimal(5, 4)
+  updatedAt   DateTime @updatedAt
+  updatedById String
+  goal        Goal     @relation("GoalAchievements", fields: [goalId], references: [id], onDelete: Cascade)
+  updatedBy   User     @relation("AchievementUpdater", fields: [updatedById], references: [id])
+
+  @@unique([goalId, quarter])
+}
+
+model CheckIn {
+  id          String    @id @default(uuid())
+  goalSheetId String
+  quarter     Quarter
+  managerId   String
+  comment     String
+  completedAt DateTime  @default(now())
+  goalSheet   GoalSheet @relation("SheetCheckIns", fields: [goalSheetId], references: [id], onDelete: Cascade)
+  manager     User      @relation("ManagerCheckIns", fields: [managerId], references: [id])
+
+  @@unique([goalSheetId, quarter])
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  entityType String
+  entityId   String
+  userId     String
+  action     String
+  oldValue   Json?
+  newValue   Json?
+  reason     String?
+  timestamp  DateTime @default(now())
+  user       User     @relation("UserAuditLogs", fields: [userId], references: [id])
+}
+
+model SharedGoal {
+  id               String        @id @default(uuid())
+  sourceGoalId     String
+  targetEmployeeId String
+  cycleId          String
+  weightage        Decimal       @db.Decimal(5, 2)
+  createdAt        DateTime      @default(now())
+  newCycleId       String?
+  cycle            GoalCycle     @relation("CycleSharedGoals", fields: [cycleId], references: [id])
+  newCycle         NewGoalCycle? @relation("NewCycleSharedGoals", fields: [newCycleId], references: [id])
+  sourceGoal       Goal          @relation("SourceSharedGoals", fields: [sourceGoalId], references: [id], onDelete: Cascade)
+  targetEmployee   User          @relation("SharedGoalTarget", fields: [targetEmployeeId], references: [id])
+
+  @@unique([sourceGoalId, targetEmployeeId, cycleId])
+}
+
+model EscalationRule {
+  id            String          @id @default(uuid())
+  name          String
+  triggerType   TriggerType
+  thresholdDays Int
+  intervalDays  Int             @default(1)
+  chain         String[]
+  isActive      Boolean         @default(true)
+  createdById   String
+  createdAt     DateTime        @default(now())
+  logs          EscalationLog[]
+  createdBy     User            @relation("EscalationRuleCreator", fields: [createdById], references: [id])
+}
+
+model EscalationLog {
+  id             String           @id @default(uuid())
+  ruleId         String
+  targetUserId   String
+  notifiedUserId String
+  level          Int
+  triggeredAt    DateTime         @default(now())
+  resolvedAt     DateTime?
+  status         EscalationStatus @default(PENDING)
+  notifiedUser   User             @relation("EscalationNotified", fields: [notifiedUserId], references: [id])
+  rule           EscalationRule   @relation(fields: [ruleId], references: [id])
+  targetUser     User             @relation("EscalationTarget", fields: [targetUserId], references: [id])
+}
+
+model NewGoalCycle {
+  id               String            @id @default(uuid())
+  name             String
+  quarter          Quarter
+  year             Int
+  isActive         Boolean           @default(false)
+  createdById      String
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  goalSheets       GoalSheet[]       @relation("NewCycleGoalSheets")
+  sharedGoals      SharedGoal[]      @relation("NewCycleSharedGoals")
+  stages           CycleStage[]      @relation("CycleStages")
+  createdBy        User              @relation("NewCycleCreator", fields: [createdById], references: [id])
+  stageTransitions StageTransition[] @relation("CycleTransitions")
+
+  @@unique([quarter, year])
+  @@index([isActive])
+  @@index([year, quarter])
+  @@map("goal_cycles")
+}
+
+model CycleStage {
+  id              String            @id @default(uuid())
+  cycleId         String
+  stageName       StageName
+  isActive        Boolean           @default(false)
+  startDate       DateTime?
+  endDate         DateTime?
+  sequenceOrder   Int
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  cycle           NewGoalCycle      @relation("CycleStages", fields: [cycleId], references: [id], onDelete: Cascade)
+  transitionsFrom StageTransition[] @relation("FromStage")
+  transitionsTo   StageTransition[] @relation("ToStage")
+
+  @@unique([cycleId, stageName])
+  @@unique([cycleId, sequenceOrder])
+  @@index([cycleId, sequenceOrder])
+  @@index([isActive])
+  @@map("cycle_stages")
+}
+
+model StageTransition {
+  id                  String       @id @default(uuid())
+  cycleId             String
+  fromStageId         String?
+  toStageId           String
+  initiatedById       String
+  reason              String?
+  isAdminOverride     Boolean      @default(false)
+  transitionTimestamp DateTime     @default(now())
+  cycle               NewGoalCycle @relation("CycleTransitions", fields: [cycleId], references: [id])
+  fromStage           CycleStage?  @relation("FromStage", fields: [fromStageId], references: [id])
+  initiatedBy         User         @relation("StageTransitionInitiator", fields: [initiatedById], references: [id])
+  toStage             CycleStage   @relation("ToStage", fields: [toStageId], references: [id])
+
+  @@index([cycleId, transitionTimestamp])
+  @@index([initiatedById])
+  @@map("stage_transitions")
+}
 
 enum Role {
   EMPLOYEE
@@ -21,6 +249,14 @@ enum Phase {
   Q2
   Q3
   Q4
+}
+
+enum StageName {
+  Planning
+  Approval
+  Locked
+  Execution
+  Review
 }
 
 enum SheetStatus {
@@ -61,178 +297,4 @@ enum EscalationStatus {
   PENDING
   RESOLVED
   IGNORED
-}
-
-// ─── Models ───────────────────────────────────────────────────────────────────
-
-model User {
-  id           String   @id @default(uuid())
-  name         String
-  email        String   @unique
-  password     String?
-  role         Role
-  managerId    String?
-  manager      User?    @relation("ManagerEmployee", fields: [managerId], references: [id])
-  subordinates User[]   @relation("ManagerEmployee")
-  department   String
-  azureAdId    String?  @unique
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-
-  // Relations
-  goalSheets      GoalSheet[]      @relation("EmployeeGoalSheets")
-  approvedSheets  GoalSheet[]      @relation("ApproverGoalSheets")
-  createdCycles   GoalCycle[]      @relation("CycleCreator")
-  checkIns        CheckIn[]        @relation("ManagerCheckIns")
-  auditLogs       AuditLog[]       @relation("UserAuditLogs")
-  achievements    Achievement[]    @relation("AchievementUpdater")
-  sharedGoals     SharedGoal[]     @relation("SharedGoalTarget")
-
-  escalationRulesCreated EscalationRule[] @relation("EscalationRuleCreator")
-  escalationTargets      EscalationLog[]  @relation("EscalationTarget")
-  escalationNotified     EscalationLog[]  @relation("EscalationNotified")
-}
-
-model GoalCycle {
-  id          String   @id @default(uuid())
-  year        Int
-  phase       Phase
-  windowOpen  DateTime
-  windowClose DateTime
-  isActive    Boolean  @default(false)
-  createdById String
-  createdBy   User     @relation("CycleCreator", fields: [createdById], references: [id])
-  createdAt   DateTime @default(now())
-
-  // Relations
-  goalSheets  GoalSheet[]  @relation("CycleGoalSheets")
-  sharedGoals SharedGoal[] @relation("CycleSharedGoals")
-}
-
-model GoalSheet {
-  id             String      @id @default(uuid())
-  employeeId     String
-  employee       User        @relation("EmployeeGoalSheets", fields: [employeeId], references: [id])
-  cycleId        String
-  cycle          GoalCycle   @relation("CycleGoalSheets", fields: [cycleId], references: [id])
-  status         SheetStatus @default(DRAFT)
-  reworkComment  String?
-  submittedAt    DateTime?
-  approvedAt     DateTime?
-  approvedById   String?
-  approvedBy     User?       @relation("ApproverGoalSheets", fields: [approvedById], references: [id])
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
-
-  // Relations
-  goals    Goal[]    @relation("SheetGoals")
-  checkIns CheckIn[] @relation("SheetCheckIns")
-
-  @@unique([employeeId, cycleId])
-}
-
-model Goal {
-  id           String     @id @default(uuid())
-  goalSheetId  String
-  goalSheet    GoalSheet  @relation("SheetGoals", fields: [goalSheetId], references: [id])
-  thrustArea   String
-  title        String
-  description  String
-  uomType      UomType
-  target       String
-  weightage    Decimal    @db.Decimal(5, 2)
-  status       GoalStatus @default(NOT_STARTED)
-  isShared     Boolean    @default(false)
-  sharedFromId String?
-  sharedFrom   Goal?      @relation("SharedGoal", fields: [sharedFromId], references: [id])
-  sharedCopies Goal[]     @relation("SharedGoal")
-  isLocked     Boolean    @default(false)
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
-
-  // Relations
-  achievements Achievement[] @relation("GoalAchievements")
-  sharedGoals  SharedGoal[]  @relation("SourceSharedGoals")
-}
-
-model Achievement {
-  id          String   @id @default(uuid())
-  goalId      String
-  goal        Goal     @relation("GoalAchievements", fields: [goalId], references: [id])
-  quarter     Quarter
-  actual      String
-  score       Decimal  @db.Decimal(5, 4)
-  updatedAt   DateTime @updatedAt
-  updatedById String
-  updatedBy   User     @relation("AchievementUpdater", fields: [updatedById], references: [id])
-
-  @@unique([goalId, quarter])
-}
-
-model CheckIn {
-  id          String    @id @default(uuid())
-  goalSheetId String
-  goalSheet   GoalSheet @relation("SheetCheckIns", fields: [goalSheetId], references: [id])
-  quarter     Quarter
-  managerId   String
-  manager     User      @relation("ManagerCheckIns", fields: [managerId], references: [id])
-  comment     String
-  completedAt DateTime  @default(now())
-
-  @@unique([goalSheetId, quarter])
-}
-
-model AuditLog {
-  id         String   @id @default(uuid())
-  entityType String
-  entityId   String
-  userId     String
-  user       User     @relation("UserAuditLogs", fields: [userId], references: [id])
-  action     String
-  oldValue   Json?
-  newValue   Json?
-  reason     String?
-  timestamp  DateTime @default(now())
-}
-
-model SharedGoal {
-  id               String    @id @default(uuid())
-  sourceGoalId     String
-  sourceGoal       Goal      @relation("SourceSharedGoals", fields: [sourceGoalId], references: [id])
-  targetEmployeeId String
-  targetEmployee   User      @relation("SharedGoalTarget", fields: [targetEmployeeId], references: [id])
-  cycleId          String
-  cycle            GoalCycle @relation("CycleSharedGoals", fields: [cycleId], references: [id])
-  weightage        Decimal   @db.Decimal(5, 2)
-  createdAt        DateTime  @default(now())
-
-  @@unique([sourceGoalId, targetEmployeeId, cycleId])
-}
-
-model EscalationRule {
-  id            String      @id @default(uuid())
-  name          String
-  triggerType   TriggerType
-  thresholdDays Int
-  intervalDays  Int         @default(1)
-  chain         String[]    // ['EMPLOYEE', 'MANAGER', 'SKIP_LEVEL', 'HR']
-  isActive      Boolean     @default(true)
-  createdById   String
-  createdBy     User        @relation("EscalationRuleCreator", fields: [createdById], references: [id])
-  createdAt     DateTime    @default(now())
-  logs          EscalationLog[]
-}
-
-model EscalationLog {
-  id             String           @id @default(uuid())
-  ruleId         String
-  rule           EscalationRule   @relation(fields: [ruleId], references: [id])
-  targetUserId   String
-  targetUser     User             @relation("EscalationTarget", fields: [targetUserId], references: [id])
-  notifiedUserId String
-  notifiedUser   User             @relation("EscalationNotified", fields: [notifiedUserId], references: [id])
-  level          Int
-  triggeredAt    DateTime         @default(now())
-  resolvedAt     DateTime?
-  status         EscalationStatus @default(PENDING)
 }

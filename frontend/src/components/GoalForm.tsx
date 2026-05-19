@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import type { Goal, GoalFormData, ThrustArea, UomType } from '../types';
+import { geminiEnabled } from '../lib/gemini';
+import { AIDescriptionWriter } from './AIGoalSuggestions';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -86,13 +88,17 @@ export function GoalForm({ goal, goalSheetId, onSubmit, onCancel, loading = fals
 
   function validate(): boolean {
     const newErrors: Record<string, string> = {};
-    if (!title.trim()) newErrors.title = 'Title is required.';
-    if (!description.trim()) newErrors.description = 'Description is required.';
-    if (!target.trim()) newErrors.target = 'Target is required.';
-    if (uomType === 'TIMELINE' && isNaN(Date.parse(target))) {
+    const titleStr = String(title).trim();
+    const descStr = String(description).trim();
+    const targetStr = String(target).trim();
+    
+    if (!titleStr) newErrors.title = 'Title is required.';
+    if (!descStr) newErrors.description = 'Description is required.';
+    if (!targetStr) newErrors.target = 'Target is required.';
+    if (uomType === 'TIMELINE' && isNaN(Date.parse(targetStr))) {
       newErrors.target = 'Target must be a valid date for Timeline goals.';
     }
-    if (uomType !== 'TIMELINE' && isNaN(Number(target))) {
+    if (uomType !== 'TIMELINE' && isNaN(Number(targetStr))) {
       newErrors.target = 'Target must be a number for this UoM type.';
     }
     if (weightage < 10) newErrors.weightage = 'Minimum weightage is 10%.';
@@ -109,10 +115,10 @@ export function GoalForm({ goal, goalSheetId, onSubmit, onCancel, loading = fals
     onSubmit({
       goalSheetId: sheetId,
       thrustArea,
-      title: title.trim(),
-      description: description.trim(),
+      title: String(title).trim(),
+      description: String(description).trim(),
       uomType,
-      target: target.trim(),
+      target: String(target).trim(),
       weightage,
     });
   }
@@ -175,9 +181,19 @@ export function GoalForm({ goal, goalSheetId, onSubmit, onCancel, loading = fals
 
       {/* Description */}
       <div>
-        <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-1">
-          Description <span className="text-red-500">*</span>
-        </label>
+        <div className="flex items-center justify-between mb-1">
+          <label htmlFor="description" className="block text-sm font-medium text-gray-700">
+            Description <span className="text-red-500">*</span>
+          </label>
+          {geminiEnabled && !isShared && (
+            <AIDescriptionWriter
+              title={title}
+              thrustArea={thrustArea}
+              uomType={uomType}
+              onGenerated={(desc) => setDescription(desc)}
+            />
+          )}
+        </div>
         <textarea
           id="description"
           value={description}

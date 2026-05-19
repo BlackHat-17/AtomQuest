@@ -136,7 +136,7 @@ export function TeamDashboardPage() {
           </div>
           <button
             onClick={() => setPushKpiOpen(true)}
-            className="rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2"
+            className="rounded-md bg-[#2d1238] px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-[#3d1f4a] focus:outline-none focus:ring-2 focus:ring-[#2d1238] focus:ring-offset-2"
           >
             Push KPI
           </button>
@@ -224,7 +224,7 @@ export function TeamDashboardPage() {
                                 }
                                 className={`rounded px-3 py-1.5 text-xs font-medium ${
                                   isSubmitted
-                                    ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                                    ? 'bg-[#1f0c25] text-white hover:bg-[#2d1238]'
                                     : 'border border-gray-300 bg-white text-gray-700 hover:bg-gray-50'
                                 }`}
                               >

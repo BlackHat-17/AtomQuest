@@ -62,7 +62,14 @@ goalsRouter.get('/my-sheet', async (req: Request, res: Response) => {
   let sheet = await prisma.goalSheet.findFirst({
     where: { employeeId },
     include: {
-      goals: { orderBy: { createdAt: 'asc' } },
+      goals: { 
+        orderBy: { createdAt: 'asc' },
+        include: {
+          achievements: {
+            orderBy: { quarter: 'asc' },
+          },
+        },
+      },
       cycle: true,
     },
     orderBy: { createdAt: 'desc' },
@@ -86,7 +93,14 @@ goalsRouter.get('/my-sheet', async (req: Request, res: Response) => {
         status: 'DRAFT',
       },
       include: {
-        goals: { orderBy: { createdAt: 'asc' } },
+        goals: { 
+          orderBy: { createdAt: 'asc' },
+          include: {
+            achievements: {
+              orderBy: { quarter: 'asc' },
+            },
+          },
+        },
         cycle: true,
       },
     });
@@ -215,7 +229,14 @@ goalsRouter.get('/:sheetId', async (req: Request, res: Response) => {
   let sheet = await prisma.goalSheet.findUnique({
     where: { id: sheetId },
     include: {
-      goals: { orderBy: { createdAt: 'asc' } },
+      goals: { 
+        orderBy: { createdAt: 'asc' },
+        include: {
+          achievements: {
+            orderBy: { quarter: 'asc' },
+          },
+        },
+      },
       cycle: true,
     },
   });
@@ -238,7 +259,14 @@ goalsRouter.get('/:sheetId', async (req: Request, res: Response) => {
         status: 'DRAFT',
       },
       include: {
-        goals: { orderBy: { createdAt: 'asc' } },
+        goals: { 
+          orderBy: { createdAt: 'asc' },
+          include: {
+            achievements: {
+              orderBy: { quarter: 'asc' },
+            },
+          },
+        },
         cycle: true,
       },
     });

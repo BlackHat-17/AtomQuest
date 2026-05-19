@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: goaltrack-backend
+    env: node
+    plan: free
+    buildCommand: cd backend && npm ci && npm run build
+    startCommand: cd backend && npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: goaltrack-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: https://goaltrack-frontend.vercel.app
+
+  - type: pserv
+    name: goaltrack-db
+    env: postgresql
+    plan: free
+    databaseName: goaltrack
+    databaseUser: goaltrack_user

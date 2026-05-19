@@ -6,7 +6,7 @@ import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios';
  * - Response interceptor: on 401, clears localStorage and redirects to /login
  */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL ?? '/api',
+  baseURL: import.meta.env.VITE_API_BASE_URL ?? '/api',
   headers: {
     'Content-Type': 'application/json',
   },

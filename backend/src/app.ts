@@ -13,7 +13,11 @@ import { reportsRouter } from './routes/reports.js';
 import { adminRouter } from './routes/admin.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { escalationRulesRouter, escalationLogsRouter } from './routes/escalation.js';
-import { analyticsRouter } from './routes/analytics.js';
+import analyticsRouter from './routes/analytics.js';
+import { cyclesRouter } from './routes/cycles.js';
+import { stagesRouter } from './routes/stages.js';
+import { cycleGoalsRouter } from './routes/cycle-goals.js';
+import { migrationRouter } from './routes/migration.js';
 import { authenticate } from './middleware/authenticate.js';
 import { requireManagerOrAdmin, requireAdmin } from './middleware/authorize.js';
 
@@ -50,7 +54,7 @@ export function createApp(): express.Application {
   app.use(cookieParser());
 
   // Health check endpoint — no auth required
-  app.get('/health', (_req: Request, res: Response) => {
+  app.get('/api/health', (_req: Request, res: Response) => {
     res.json({
       status: 'ok',
       timestamp: new Date().toISOString(),
@@ -70,7 +74,11 @@ export function createApp(): express.Application {
   app.use('/api/admin/notifications', authenticate, requireAdmin, notificationsRouter);
   app.use('/api/admin/escalation-rules', authenticate, requireAdmin, escalationRulesRouter);
   app.use('/api/admin/escalation-logs', authenticate, requireAdmin, escalationLogsRouter);
-  app.use('/api/analytics', authenticate, requireAdmin, analyticsRouter);
+  app.use('/api/admin/analytics', authenticate, requireAdmin, analyticsRouter);
+  app.use('/api', authenticate, cyclesRouter);
+  app.use('/api', authenticate, stagesRouter);
+  app.use('/api/cycle-goals', authenticate, cycleGoalsRouter);
+  app.use('/api/admin/migration', authenticate, migrationRouter);
 
   // 404 handler
   app.use((_req: Request, res: Response) => {

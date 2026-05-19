@@ -86,6 +86,7 @@ export function CycleManagementPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingCycle, setEditingCycle] = useState<GoalCycle | null>(null);
+  const [switching, setSwitching] = useState(false);
 
   const fetchCycles = useCallback(async () => {
     setLoading(true);
@@ -111,6 +112,48 @@ export function CycleManagementPage() {
     }
   };
 
+  // Quick switch to a specific phase
+  const handleQuickSwitch = async (targetPhase: Phase) => {
+    setError(null);
+    setSuccess(null);
+    setSwitching(true);
+    
+    try {
+      // Find the cycle for the target phase in the current year
+      const currentYear = new Date().getFullYear();
+      const targetCycle = cycles.find(c => c.phase === targetPhase && c.year === currentYear);
+      
+      if (!targetCycle) {
+        setError(`No ${PHASE_LABELS[targetPhase]} cycle found for ${currentYear}. Please create it first.`);
+        setSwitching(false);
+        return;
+      }
+
+      // Activate the target cycle (backend will deactivate others with same phase)
+      await api.put(`/admin/cycles/${targetCycle.id}`, { isActive: true });
+      setSuccess(`Switched to ${PHASE_LABELS[targetPhase]} successfully!`);
+      await fetchCycles();
+    } catch (err: unknown) {
+      setError((err as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Failed to switch cycle');
+    } finally {
+      setSwitching(false);
+    }
+  };
+
+  // Get current active cycle
+  const activeCycle = cycles.find(c => c.isActive);
+  const currentYear = new Date().getFullYear();
+  const currentYearCycles = cycles.filter(c => c.year === currentYear);
+
+  // Phase progression order
+  const phaseOrder: Phase[] = ['GOAL_SETTING', 'Q1', 'Q2', 'Q3', 'Q4'];
+  const getNextPhase = (current: Phase): Phase | null => {
+    const idx = phaseOrder.indexOf(current);
+    return idx >= 0 && idx < phaseOrder.length - 1 ? phaseOrder[idx + 1] : null;
+  };
+
+  const nextPhase = activeCycle ? getNextPhase(activeCycle.phase) : null;
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
@@ -120,8 +163,84 @@ export function CycleManagementPage() {
         </div>
         <button onClick={() => { setEditingCycle(null); setModalOpen(true); }} className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-indigo-700">+ Create Cycle</button>
       </div>
+
+      {/* Quick Cycle Switcher */}
+      <div className="mb-6 rounded-xl border border-[#1f0c25]/20 bg-gradient-to-r from-[#1f0c25]/5 to-[#2d1238]/5 p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-gray-700">Active Cycle</h2>
+            {activeCycle ? (
+              <p className="mt-1 text-2xl font-bold text-indigo-700">
+                {activeCycle.year} — {PHASE_LABELS[activeCycle.phase]}
+              </p>
+            ) : (
+              <p className="mt-1 text-lg text-gray-500">No active cycle</p>
+            )}
+          </div>
+          {nextPhase && (
+            <button
+              onClick={() => handleQuickSwitch(nextPhase)}
+              disabled={switching}
+              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-indigo-700 disabled:opacity-50 transition-all"
+            >
+              {switching ? (
+                <>
+                  <svg className="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Switching...
+                </>
+              ) : (
+                <>
+                  Switch to {PHASE_LABELS[nextPhase]}
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Quick Phase Buttons */}
+        <div className="flex flex-wrap gap-2">
+          {phaseOrder.map((phase) => {
+            const cycle = currentYearCycles.find(c => c.phase === phase);
+            const isActive = cycle?.isActive ?? false;
+            const exists = !!cycle;
+
+            return (
+              <button
+                key={phase}
+                onClick={() => exists && handleQuickSwitch(phase)}
+                disabled={!exists || isActive || switching}
+                className={`rounded-lg border px-3 py-1.5 text-xs font-medium transition-all ${
+                  isActive
+                    ? 'border-green-300 bg-green-100 text-green-800 cursor-default'
+                    : exists
+                    ? 'border-indigo-200 bg-white text-indigo-700 hover:bg-indigo-50 hover:border-indigo-300'
+                    : 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
+                }`}
+              >
+                {PHASE_LABELS[phase]}
+                {isActive && ' ✓'}
+                {!exists && ' (Not Created)'}
+              </button>
+            );
+          })}
+        </div>
+
+        {currentYearCycles.length < 5 && (
+          <p className="mt-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2">
+            ⚠️ Some cycles for {currentYear} are missing. Create them to enable quick switching.
+          </p>
+        )}
+      </div>
+
       {success && <div className="mb-4 rounded-md bg-green-50 p-3 text-sm text-green-700">{success}</div>}
       {error && <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">{error}</div>}
+      
       <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
         {loading ? <div className="p-8 text-center text-sm text-gray-500">Loading…</div> : cycles.length === 0 ? <div className="p-8 text-center text-sm text-gray-500">No cycles found.</div> : (
           <div className="overflow-x-auto">
