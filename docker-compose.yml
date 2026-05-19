@@ -37,16 +37,6 @@ services:
       timeout: 5s
       retries: 5
 
-volumes:
-  postgres_data:
-    driver: local
-  redis_data:
-    driver: local
-
-networks:
-  goal_portal_network:
-    driver: bridge
-
   backend:
     build:
       context: ./backend
@@ -76,3 +66,14 @@ networks:
       - backend
     networks:
       - goal_portal_network
+
+volumes:
+  postgres_data:
+    driver: local
+
+  redis_data:
+    driver: local
+
+networks:
+  goal_portal_network:
+    driver: bridge
