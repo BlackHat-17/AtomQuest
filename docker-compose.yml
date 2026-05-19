@@ -45,6 +45,8 @@ services:
     restart: unless-stopped
     ports:
       - '8000:8000'
+    env_file:
+      - ./backend/.env
     environment:
       DATABASE_URL: postgresql://goalportal:goalportal_secret@postgres:5432/goalportal
       REDIS_URL: redis://redis:6379
