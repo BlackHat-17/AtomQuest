@@ -38,8 +38,9 @@ services:
       retries: 5
 
   backend:
-    build:
-      context: ./backend
+   build:
+    context: .
+    dockerfile: backend/Dockerfile
     container_name: goal_portal_backend
     restart: unless-stopped
     ports:
