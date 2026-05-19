@@ -46,3 +46,33 @@ volumes:
 networks:
   goal_portal_network:
     driver: bridge
+
+  backend:
+    build:
+      context: ./backend
+    container_name: goal_portal_backend
+    restart: unless-stopped
+    ports:
+      - '8000:8000'
+    environment:
+      DATABASE_URL: postgresql://goalportal:goalportal_secret@postgres:5432/goalportal
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - goal_portal_network
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: goal_portal_frontend
+    restart: unless-stopped
+    ports:
+      - '80:80'
+    depends_on:
+      - backend
+    networks:
+      - goal_portal_network
