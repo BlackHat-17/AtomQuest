@@ -206,7 +206,7 @@ interface MigrationProgressProps {
 
 function MigrationProgressCard({ migration, onRefresh }: MigrationProgressProps) {
   const [progress, setProgress] = useState<MigrationProgress | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [, setLoading] = useState(false);
 
   const fetchProgress = useCallback(async () => {
     if (migration.status !== 'RUNNING') return;

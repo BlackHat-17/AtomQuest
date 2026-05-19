@@ -21,11 +21,6 @@ interface CycleStage {
   endDate?: string;
 }
 
-interface CreateCycleData {
-  quarter: 'Q1' | 'Q2' | 'Q3' | 'Q4';
-  year: number;
-  isActive: boolean;
-}
 
 const QUARTERS = ['Q1', 'Q2', 'Q3', 'Q4'] as const;
 const STAGE_COLORS = {
@@ -166,7 +161,7 @@ function StageTransitionModal({ open, onClose, onSuccess, cycle }: StageTransiti
   const [adminOverride, setAdminOverride] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [allowedTransitions, setAllowedTransitions] = useState<string[]>([]);
+  // const [allowedTransitions, setAllowedTransitions] = useState<string[]>([]);
 
   useEffect(() => {
     if (open && cycle) {
@@ -181,8 +176,8 @@ function StageTransitionModal({ open, onClose, onSuccess, cycle }: StageTransiti
     if (!cycle) return;
     
     try {
-      const response = await api.get(`/cycles/${cycle.id}/current-stage`);
-      setAllowedTransitions(response.data.data.allowedTransitions || []);
+      await api.get(`/cycles/${cycle.id}/current-stage`);
+      // setAllowedTransitions(response.data.data.allowedTransitions || []);
     } catch (err) {
       console.error('Failed to fetch allowed transitions:', err);
     }

@@ -6,7 +6,7 @@ const msalConfig: Configuration = {
     authority: `https://login.microsoftonline.com/${import.meta.env.VITE_AAD_TENANT_ID ?? 'common'}`,
     redirectUri: import.meta.env.VITE_AAD_REDIRECT_URI ?? window.location.origin,
   },
-  cache: { cacheLocation: 'localStorage', storeAuthStateInCookie: false },
+  cache: { cacheLocation: 'localStorage' },
 };
 
 export const msalInstance = new PublicClientApplication(msalConfig);

@@ -187,12 +187,12 @@ export function QoQTrendsChart() {
               <XAxis dataKey="quarter" tick={{ fontSize: 13 }} />
               <YAxis
                 domain={[0, 100]}
-                tickFormatter={(v) => `${v}%`}
+                tickFormatter={(v: number) => `${v}%`}
                 tick={{ fontSize: 12 }}
                 width={48}
               />
               <Tooltip
-                formatter={(value: number | null | string) =>
+                formatter={(value: any) =>
                   typeof value === 'number' && value !== null ? [`${value}%`, ''] : ['N/A', '']
                 }
               />

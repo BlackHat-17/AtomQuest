@@ -1,12 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useAuth } from '../../hooks/useAuth';
 import { GoalForm } from '../../components/GoalForm';
 import { WeightageBar } from '../../components/WeightageBar';
 import { AIGoalSuggestions } from '../../components/AIGoalSuggestions';
 import { FloatingBot } from '../../components/FloatingBot';
 import { geminiEnabled } from '../../lib/gemini';
 import api from '../../lib/api';
-import type { Goal, GoalFormData, ThrustArea, UomType } from '../../types';
+import type { Goal, GoalFormData } from '../../types';
 
 interface Cycle {
   id: string;
@@ -72,11 +71,7 @@ const UOM_LABELS: Record<string, string> = {
   ZERO: 'Zero',
 };
 
-const GOAL_STATUS_LABELS: Record<string, string> = {
-  NOT_STARTED: 'Not Started',
-  ON_TRACK: 'On Track',
-  COMPLETED: 'Completed',
-};
+
 
 // ─── Stage Info Component ─────────────────────────────────────────────────────
 
@@ -174,8 +169,8 @@ function AchievementModal({ open, onClose, onSuccess, goal }: AchievementModalPr
 
   useEffect(() => {
     if (open && goal) {
-      setAchievement(goal.achievement || '');
-      setScore(goal.score || '');
+      setAchievement('');
+      setScore('');
       setError(null);
     }
   }, [open, goal]);
@@ -274,7 +269,7 @@ function AchievementModal({ open, onClose, onSuccess, goal }: AchievementModalPr
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function CycleAwareGoalSheetPage() {
-  const { user } = useAuth();
+
   const [goalData, setGoalData] = useState<CycleGoalData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -488,16 +483,8 @@ export default function CycleAwareGoalSheetPage() {
                   <div className="flex items-center justify-between">
                     <div className="flex-1">
                       <h4 className="text-sm font-medium text-gray-700 mb-1">Achievement</h4>
-                      {goal.achievement ? (
-                        <div>
-                          <p className="text-sm text-gray-600 mb-2">{goal.achievement}</p>
-                          {visibilityRules.canViewScores && goal.score !== null && (
-                            <p className="text-sm text-gray-500">Score: {goal.score}%</p>
-                          )}
-                        </div>
-                      ) : (
-                        <p className="text-sm text-gray-500">No achievement recorded yet</p>
-                      )}
+                      {/* Achievement data would come from separate API call */}
+                      <p className="text-sm text-gray-500">No achievement recorded yet</p>
                     </div>
                     
                     {userPermissions.canUpdateAchievements && (
@@ -545,27 +532,67 @@ export default function CycleAwareGoalSheetPage() {
 
       {geminiEnabled && canAddGoals && (
         <>
-          <AIGoalSuggestions onSuggestionSelect={() => {}} />
+          <AIGoalSuggestions 
+            department={cycle.name}
+            role="EMPLOYEE"
+            existingGoalTitles={goals.map(g => g.title)}
+            onApply={() => {}}
+          />
           <FloatingBot />
         </>
       )}
 
-      <GoalForm
-        open={modalOpen}
-        onClose={() => {
-          setModalOpen(false);
-          setEditingGoal(undefined);
-          setFormError(null);
-        }}
-        onSubmit={editingGoal ? 
-          (data) => handleUpdateGoal(editingGoal.id, data) : 
-          handleCreateGoal
-        }
-        goal={editingGoal}
-        loading={formLoading}
-        error={formError}
-        existingGoals={goals}
-      />
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto">
+          <div className="flex min-h-screen items-center justify-center p-4">
+            <div className="fixed inset-0 bg-black bg-opacity-25" onClick={() => {
+              setModalOpen(false);
+              setEditingGoal(undefined);
+              setFormError(null);
+            }} />
+            <div className="relative bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900">
+                    {editingGoal ? 'Edit Goal' : 'Create New Goal'}
+                  </h2>
+                  <button
+                    onClick={() => {
+                      setModalOpen(false);
+                      setEditingGoal(undefined);
+                      setFormError(null);
+                    }}
+                    className="text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+                {formError && (
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-md">
+                    <p className="text-sm text-red-600">{formError}</p>
+                  </div>
+                )}
+                <GoalForm
+                  goal={editingGoal}
+                  goalSheetId={activeCycle?.id}
+                  onSubmit={editingGoal ? 
+                    (data) => handleUpdateGoal(editingGoal.id, data) : 
+                    handleCreateGoal
+                  }
+                  onCancel={() => {
+                    setModalOpen(false);
+                    setEditingGoal(undefined);
+                    setFormError(null);
+                  }}
+                  loading={formLoading}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       <AchievementModal
         open={achievementModalOpen}

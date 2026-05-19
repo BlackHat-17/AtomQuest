@@ -11,7 +11,7 @@ interface FloatingBotProps {
   currentWeightage?: number;
 }
 
-export function FloatingBot({ onFillGoals, currentGoalCount = 0, currentWeightage = 0 }: FloatingBotProps) {
+export function FloatingBot({ onFillGoals, currentGoalCount = 0 }: FloatingBotProps) {
   const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -85,7 +85,7 @@ export function FloatingBot({ onFillGoals, currentGoalCount = 0, currentWeightag
     setMessages(prev => [...prev, { role: 'user', content: prompt }]);
 
     try {
-      const goals = await fillGoalsFromPrompt(prompt, user.department, currentGoalCount, currentWeightage);
+      const goals = await fillGoalsFromPrompt(prompt, user.department, currentGoalCount);
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: `✅ Generated ${goals.length} goals for you!\n\n${goals.map((g, i) => `${i + 1}. **${g.title}** (${g.thrustArea}, ${g.weightage}%)`).join('\n')}\n\nClick "Apply Goals" to add them to your sheet.`,

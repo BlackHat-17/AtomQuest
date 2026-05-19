@@ -58,21 +58,10 @@ const STATUS_COLORS: Record<string, string> = {
 
 // ─── Custom label for pie chart ───────────────────────────────────────────────
 
-function renderCustomLabel({
-  cx,
-  cy,
-  midAngle,
-  innerRadius,
-  outerRadius,
-  percent,
-}: {
-  cx: number;
-  cy: number;
-  midAngle: number;
-  innerRadius: number;
-  outerRadius: number;
-  percent: number;
-}) {
+function renderCustomLabel(props: any) {
+  const { cx, cy, midAngle, innerRadius, outerRadius, percent } = props;
+  if (!cx || !cy || midAngle === undefined || !innerRadius || !outerRadius || !percent) return null;
+
   const RADIAN = Math.PI / 180;
   const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
   const x = cx + radius * Math.cos(-midAngle * RADIAN);
@@ -112,7 +101,7 @@ export function GoalDistribution() {
           { name: 'Operational Excellence', count: 28, weightage: 20 },
           { name: 'Innovation', count: 18, weightage: 15 },
           { name: 'Team Development', count: 12, weightage: 5 }
-        ].filter(item => !department || Math.random() > 0.3), // Simulate department filtering
+        ].filter(() => !department || Math.random() > 0.3), // Simulate department filtering
         byUomType: [
           { name: 'Percentage', count: 58 },
           { name: 'Number', count: 42 },
@@ -219,13 +208,13 @@ export function GoalDistribution() {
                     ))}
                   </Pie>
                   <Tooltip
-                    formatter={(value: number, name: string, props: { payload?: ThrustAreaItem }) => [
+                    formatter={(value: any, name: any, props: any) => [
                       `${value} goals (${props.payload?.weightage ?? 0}% total weightage)`,
                       name,
                     ]}
                   />
                   <Legend
-                    formatter={(value) => (
+                    formatter={(value: string) => (
                       <span className="text-xs text-gray-700">{value}</span>
                     )}
                   />
@@ -288,7 +277,7 @@ export function GoalDistribution() {
                   </Pie>
                   <Tooltip />
                   <Legend
-                    formatter={(value) => (
+                    formatter={(value: string) => (
                       <span className="text-xs text-gray-700">
                         {value.replace(/_/g, ' ')}
                       </span>

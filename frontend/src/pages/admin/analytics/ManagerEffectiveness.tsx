@@ -108,8 +108,8 @@ export function ManagerEffectiveness() {
             pendingCheckIns: 12,
             rate: 50
           }
-        ].filter(mgr => !department || Math.random() > 0.3) // Simulate department filtering
-         .filter(mgr => !quarter || Math.random() > 0.2) // Simulate quarter filtering
+        ].filter(() => !department || Math.random() > 0.3) // Simulate department filtering
+         .filter(() => !quarter || Math.random() > 0.2) // Simulate quarter filtering
          .sort((a, b) => b.rate - a.rate) // Sort by completion rate descending
       };
       
@@ -203,7 +203,7 @@ export function ManagerEffectiveness() {
                 <XAxis
                   type="number"
                   domain={[0, 100]}
-                  tickFormatter={(v) => `${v}%`}
+                  tickFormatter={(v: number) => `${v}%`}
                   tick={{ fontSize: 12 }}
                 />
                 <YAxis
@@ -213,7 +213,7 @@ export function ManagerEffectiveness() {
                   width={115}
                 />
                 <Tooltip
-                  formatter={(value: number) => [`${value}%`, 'Completion Rate']}
+                  formatter={(value: any) => [`${value}%`, 'Completion Rate']}
                 />
                 <Bar dataKey="rate" name="Completion Rate" radius={[0, 4, 4, 0]}>
                   {managers.map((mgr, idx) => (

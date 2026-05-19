@@ -417,7 +417,7 @@ export default function StageManagementPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <StageTimeline stages={stages} currentStage={currentStage} />
+        <StageTimeline stages={stages} currentStage={currentStage || undefined} />
         
         <div className="space-y-6">
           {/* Current Stage Info */}

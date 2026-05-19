@@ -64,7 +64,7 @@ export function GoalSheetPage() {
   const [submitLoading, setSubmitLoading] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [pendingSuggestion, setPendingSuggestion] = useState<{ thrustArea: ThrustArea; title: string; description: string; uomType: UomType; target: string; weightage: number } | null>(null);
-  const [pendingBulkGoals, setPendingBulkGoals] = useState<Array<{ thrustArea: ThrustArea; title: string; description: string; uomType: UomType; target: string; weightage: number }>>([]);
+
   const [bulkCreating, setBulkCreating] = useState(false);
   const [bulkSuccess, setBulkSuccess] = useState<string | null>(null);
   
@@ -138,7 +138,7 @@ export function GoalSheetPage() {
     }
   }
 
-  async function handleBulkGoalsFromBot(goals: Array<{ thrustArea: ThrustArea; title: string; description: string; uomType: UomType; target: string; weightage: number }>) {
+  async function handleBulkGoalsFromBot(goals: Array<{ thrustArea: string; title: string; description: string; uomType: string; target: string; weightage: number }>) {
     if (!sheet || isReadOnly) return;
     setBulkCreating(true);
     setBulkSuccess(null);
@@ -146,7 +146,15 @@ export function GoalSheetPage() {
     for (const g of goals) {
       if ((sheet.goals.length + created) >= 8) break;
       try {
-        await createGoal({ goalSheetId: sheet.id, ...g });
+        await createGoal({ 
+          goalSheetId: sheet.id, 
+          thrustArea: g.thrustArea as ThrustArea,
+          title: g.title,
+          description: g.description,
+          uomType: g.uomType as UomType,
+          target: g.target,
+          weightage: g.weightage
+        });
         created++;
       } catch {
         // skip failed goals
@@ -162,7 +170,7 @@ export function GoalSheetPage() {
     setSubmitLoading(true);
     setSubmitError(null);
     try {
-      await api.post<GoalSheet>(`/goals/${sheet.id}/submit`);
+      await api.post<GoalSheet>(`/goals/${sheet?.id}/submit`);
       await fetchMySheet();
     } catch (err: unknown) {
       const message =
@@ -311,8 +319,6 @@ export function GoalSheetPage() {
               department={user?.department ?? ''}
               role={user?.role ?? ''}
               existingGoalTitles={sheet.goals.map(g => g.title)}
-              existingGoalCount={sheet.goals.length}
-              existingWeightage={totalWeightage}
               onApply={(suggestion) => {
                 setEditingGoal(undefined);
                 setFormError(null);

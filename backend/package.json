@@ -32,17 +32,16 @@
     "exceljs": "^4.4.0",
     "express": "^4.21.0",
     "helmet": "^8.0.0",
-    "jsonwebtoken": "^9.0.2",
+    "jsonwebtoken": "^9.0.3",
     "morgan": "^1.10.0",
     "node-cron": "^3.0.3",
-    "nodemailer": "^6.9.15",
+    "nodemailer": "^6.10.1",
     "passport": "^0.7.0",
     "passport-azure-ad": "^4.3.5",
     "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
-    "@types/supertest": "^6.0.2",
     "@types/cookie-parser": "^1.4.7",
     "@types/cors": "^2.8.17",
     "@types/express": "^5.0.0",
@@ -52,13 +51,14 @@
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^6.4.16",
     "@types/passport": "^1.0.16",
-    "fast-check": "^3.22.0",
+    "@types/supertest": "^6.0.2",
+    "fast-check": "^3.23.2",
     "nodemon": "^3.1.7",
     "prisma": "^5.19.1",
+    "supertest": "^7.2.2",
     "ts-node": "^10.9.2",
     "tsx": "^4.19.1",
     "typescript": "^5.5.3",
-    "supertest": "^7.0.0",
-    "vitest": "^2.1.0"
+    "vitest": "^2.1.9"
   }
 }

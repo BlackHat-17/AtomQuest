@@ -131,7 +131,7 @@ function AIChatPanel({ user }: { user: { name: string; role: string; department:
 
 // ─── AI Insights panel ────────────────────────────────────────────────────────
 
-function AIInsightsPanel({ user }: { user: { role: string; department: string; name: string } }) {
+function AIInsightsPanel() {
   const [insights, setInsights] = useState<{ overallScore: string; trend: string; strengths: string[]; improvements: string[]; recommendation: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -366,7 +366,7 @@ export function ProfilePage() {
           {/* AI Insights — only for employees */}
           {user.role === 'EMPLOYEE' && geminiEnabled && (
             <div className="lg:col-span-2">
-              <AIInsightsPanel user={user} />
+              <AIInsightsPanel />
             </div>
           )}
         </div>
