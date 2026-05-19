@@ -4,11 +4,13 @@ WORKDIR /app
 
 COPY package*.json ./
 
-RUN npm install --omit=dev
+RUN npm install
 
 COPY backend ./backend
 
 WORKDIR /app/backend
+
+RUN npm run build
 
 EXPOSE 8000
 
