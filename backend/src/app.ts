@@ -3,6 +3,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import cookieParser from 'cookie-parser';
+import rateLimit from 'express-rate-limit';
 import { authRouter } from './routes/auth.js';
 import { goalsRouter } from './routes/goals.js';
 import { managerRouter } from './routes/manager.js';
@@ -25,8 +26,34 @@ import { requireManagerOrAdmin, requireAdmin } from './middleware/authorize.js';
  * Creates and configures the Express application.
  * Separated from the server entry point to allow testing without starting a server.
  */
+// Rate limiters (disabled in test/development so they don't break local dev)
+const isProductionLike = process.env.NODE_ENV === 'production';
+
+/** General API limiter: 100 requests per 15 minutes per IP */
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isProductionLike ? 100 : 0, // 0 = unlimited in dev
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many requests, please try again later.' },
+});
+
+/** Auth limiter: 10 requests per 15 minutes per IP (brute-force protection) */
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isProductionLike ? 10 : 0,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many authentication attempts, please try again later.' },
+});
+
 export function createApp(): express.Application {
   const app = express();
+
+  // Trust the first proxy (Nginx) — required for correct IP in rate limiting
+  if (isProductionLike) {
+    app.set('trust proxy', 1);
+  }
 
   // Security headers
   app.use(helmet());
@@ -62,8 +89,11 @@ export function createApp(): express.Application {
     });
   });
 
+  // Apply rate limiting to all API routes
+  app.use('/api/', apiLimiter);
+
   // API routes
-  app.use('/api/auth', authRouter);
+  app.use('/api/auth', authLimiter, authRouter);
   app.use('/api/goals', authenticate, goalsRouter);
   app.use('/api/manager', authenticate, requireManagerOrAdmin, managerRouter);
   app.use('/api/shared-goals', authenticate, sharedGoalsRouter);

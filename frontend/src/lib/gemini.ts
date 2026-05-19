@@ -311,3 +311,314 @@ Rules:
     throw new Error('Could not parse goals from prompt. The AI returned invalid JSON.');
   }
 }
+
+// ─── Feature: Goal progress prediction ───────────────────────────────────────
+
+export interface ProgressPrediction {
+  predictedYearEndScore: string;
+  confidence: 'high' | 'medium' | 'low';
+  trajectory: 'on-track' | 'at-risk' | 'ahead' | 'behind';
+  quarterlyForecast: { quarter: string; predictedScore: string }[];
+  keyDrivers: string[];
+  actionItems: string[];
+}
+
+export async function predictYearEndPerformance(
+  goals: Array<{
+    title: string;
+    weightage: number;
+    achievements: Array<{ quarter: string; actual: string; score: number }>;
+  }>
+): Promise<ProgressPrediction> {
+  const goalsText = goals.map(g => {
+    const ach = g.achievements.map(a => `${a.quarter}: score=${(a.score * 100).toFixed(0)}%`).join(', ');
+    return `- ${g.title} (weight: ${g.weightage}%): ${ach || 'no data yet'}`;
+  }).join('\n');
+
+  const prompt = `You are a performance analytics expert. Based on quarterly achievement data, predict year-end performance.
+
+Goals and current progress:
+${goalsText}
+
+Return ONLY valid JSON (no markdown):
+{
+  "predictedYearEndScore": "e.g. 82%",
+  "confidence": "high|medium|low",
+  "trajectory": "on-track|at-risk|ahead|behind",
+  "quarterlyForecast": [
+    { "quarter": "Q3", "predictedScore": "79%" },
+    { "quarter": "Q4", "predictedScore": "84%" }
+  ],
+  "keyDrivers": ["key factor 1", "key factor 2"],
+  "actionItems": ["specific action 1", "specific action 2"]
+}`;
+
+  const text = await callGemini(prompt);
+  const jsonText = extractJSON(text);
+  if (!jsonText) throw new Error('Could not parse performance prediction.');
+  return JSON.parse(jsonText) as ProgressPrediction;
+}
+
+// ─── Feature: Smart check-in questions ───────────────────────────────────────
+
+export interface CheckInQuestions {
+  openingQuestion: string;
+  progressQuestions: string[];
+  blockerQuestions: string[];
+  supportQuestion: string;
+  closingQuestion: string;
+}
+
+export async function generateCheckInQuestions(
+  employeeName: string,
+  goals: Array<{ title: string; status: string; lastAchievement?: string }>,
+  quarter: string
+): Promise<CheckInQuestions> {
+  const goalsText = goals.map(g =>
+    `- ${g.title} (status: ${g.status}${g.lastAchievement ? `, last update: ${g.lastAchievement}` : ''})`
+  ).join('\n');
+
+  const prompt = `You are an expert management coach. Generate tailored, empathetic check-in questions for a ${quarter} performance conversation.
+
+Employee: ${employeeName}
+Goals:
+${goalsText}
+
+Generate specific, open-ended questions that encourage honest dialogue. Avoid generic questions.
+
+Return ONLY valid JSON (no markdown):
+{
+  "openingQuestion": "a warm, engaging opener",
+  "progressQuestions": ["specific question about goal 1", "specific question about goal 2"],
+  "blockerQuestions": ["what obstacles question", "what support question"],
+  "supportQuestion": "what can I do as your manager question",
+  "closingQuestion": "forward-looking closing question"
+}`;
+
+  const text = await callGemini(prompt);
+  const jsonText = extractJSON(text);
+  if (!jsonText) throw new Error('Could not parse check-in questions.');
+  return JSON.parse(jsonText) as CheckInQuestions;
+}
+
+// ─── Feature: SMART goal quality review ──────────────────────────────────────
+
+export interface GoalQualityReview {
+  score: number; // 0-100
+  grade: 'Excellent' | 'Good' | 'Fair' | 'Poor';
+  isSpecific: boolean;
+  isMeasurable: boolean;
+  isAchievable: boolean;
+  isRelevant: boolean;
+  isTimeBound: boolean;
+  strengths: string[];
+  improvements: string[];
+  rewrittenGoal: string;
+  rewrittenDescription: string;
+}
+
+export async function reviewGoalQuality(goal: {
+  title: string;
+  description: string;
+  thrustArea: string;
+  uomType: string;
+  target: string;
+  weightage: number;
+}): Promise<GoalQualityReview> {
+  const prompt = `You are a performance management expert. Critically evaluate this goal against SMART criteria and provide a rewrite.
+
+Goal Title: "${goal.title}"
+Description: "${goal.description}"
+Thrust Area: ${goal.thrustArea}
+Measurement Type: ${goal.uomType}
+Target: ${goal.target}
+Weightage: ${goal.weightage}%
+
+Return ONLY valid JSON (no markdown):
+{
+  "score": 75,
+  "grade": "Good",
+  "isSpecific": true,
+  "isMeasurable": true,
+  "isAchievable": true,
+  "isRelevant": true,
+  "isTimeBound": false,
+  "strengths": ["clear metric", "aligned to thrust area"],
+  "improvements": ["add deadline", "be more specific about method"],
+  "rewrittenGoal": "improved title",
+  "rewrittenDescription": "improved 1-2 sentence SMART description"
+}`;
+
+  const text = await callGemini(prompt);
+  const jsonText = extractJSON(text);
+  if (!jsonText) throw new Error('Could not parse goal quality review.');
+  return JSON.parse(jsonText) as GoalQualityReview;
+}
+
+// ─── Feature: Performance review draft ───────────────────────────────────────
+
+export interface PerformanceReviewDraft {
+  summary: string;
+  accomplishments: string[];
+  areasForGrowth: string[];
+  managerComment: string;
+  selfAssessmentPrompt: string;
+  overallRating: 'Exceptional' | 'Exceeds Expectations' | 'Meets Expectations' | 'Needs Improvement';
+}
+
+export async function generatePerformanceReviewDraft(
+  employee: { name: string; role: string; department: string },
+  goals: Array<{
+    title: string;
+    weightage: number;
+    achievements: Array<{ quarter: string; score: number; actual: string }>;
+  }>,
+  perspective: 'manager' | 'self'
+): Promise<PerformanceReviewDraft> {
+  const goalsText = goals.map(g => {
+    const avg = g.achievements.length
+      ? (g.achievements.reduce((s, a) => s + a.score, 0) / g.achievements.length * 100).toFixed(0)
+      : 'N/A';
+    return `- ${g.title} (weight: ${g.weightage}%, avg score: ${avg}%)`;
+  }).join('\n');
+
+  const prompt = `You are writing a ${perspective === 'manager' ? 'manager' : 'self'} performance review for an employee.
+
+Employee: ${employee.name}
+Role: ${employee.role}
+Department: ${employee.department}
+
+Goal Performance:
+${goalsText}
+
+Write a professional, balanced, and specific review. Be honest about areas needing growth while recognizing achievements.
+
+Return ONLY valid JSON (no markdown):
+{
+  "summary": "2-3 sentence overall performance summary",
+  "accomplishments": ["specific accomplishment 1", "specific accomplishment 2", "specific accomplishment 3"],
+  "areasForGrowth": ["development area 1", "development area 2"],
+  "managerComment": "2-3 sentence ${perspective === 'manager' ? 'manager' : 'reflective'} comment",
+  "selfAssessmentPrompt": "A question to prompt deeper ${perspective === 'manager' ? 'employee' : 'self'} reflection",
+  "overallRating": "Meets Expectations"
+}`;
+
+  const text = await callGemini(prompt);
+  const jsonText = extractJSON(text);
+  if (!jsonText) throw new Error('Could not parse performance review draft.');
+  return JSON.parse(jsonText) as PerformanceReviewDraft;
+}
+
+// ─── Feature: Goal risk detection ────────────────────────────────────────────
+
+export interface GoalRisk {
+  goalTitle: string;
+  riskLevel: 'critical' | 'high' | 'medium' | 'low';
+  riskReason: string;
+  recommendedAction: string;
+  timeToIntervene: string;
+}
+
+export interface RiskAssessment {
+  overallRisk: 'critical' | 'high' | 'medium' | 'low';
+  atRiskGoals: GoalRisk[];
+  onTrackGoals: string[];
+  immediateActions: string[];
+}
+
+export async function assessGoalRisks(
+  goals: Array<{
+    title: string;
+    weightage: number;
+    status: string;
+    achievements: Array<{ quarter: string; score: number }>;
+  }>,
+  currentQuarter: string
+): Promise<RiskAssessment> {
+  const goalsText = goals.map(g => {
+    const scores = g.achievements.map(a => `${a.quarter}:${(a.score * 100).toFixed(0)}%`).join(', ');
+    return `- ${g.title} | weight:${g.weightage}% | status:${g.status} | scores:[${scores || 'none'}]`;
+  }).join('\n');
+
+  const prompt = `You are a performance risk analyst. Assess which goals are at risk of not being achieved by year-end.
+
+Current Quarter: ${currentQuarter}
+Goals:
+${goalsText}
+
+A goal is "critical" if score < 50%, "high" if 50-65%, "medium" if 65-80%, "low/on-track" if > 80%.
+Consider weightage — high-weight goals with low scores are higher risk.
+
+Return ONLY valid JSON (no markdown):
+{
+  "overallRisk": "medium",
+  "atRiskGoals": [
+    {
+      "goalTitle": "goal name",
+      "riskLevel": "high",
+      "riskReason": "why this goal is at risk",
+      "recommendedAction": "specific intervention",
+      "timeToIntervene": "e.g. within 2 weeks"
+    }
+  ],
+  "onTrackGoals": ["goal title 1", "goal title 2"],
+  "immediateActions": ["priority action 1", "priority action 2"]
+}`;
+
+  const text = await callGemini(prompt);
+  const jsonText = extractJSON(text);
+  if (!jsonText) throw new Error('Could not parse risk assessment.');
+  return JSON.parse(jsonText) as RiskAssessment;
+}
+
+// ─── Feature: Goal-to-OKR converter ──────────────────────────────────────────
+
+export interface OKR {
+  objective: string;
+  keyResults: Array<{
+    description: string;
+    metric: string;
+    baseline: string;
+    target: string;
+    unit: string;
+  }>;
+  alignedThemes: string[];
+}
+
+export async function convertGoalsToOKR(
+  goals: Array<{ title: string; description: string; thrustArea: string; target: string }>,
+  teamName: string
+): Promise<OKR> {
+  const goalsText = goals.map(g =>
+    `- ${g.title}: ${g.description} (thrust: ${g.thrustArea}, target: ${g.target})`
+  ).join('\n');
+
+  const prompt = `You are an OKR expert. Convert these individual performance goals into a cohesive OKR framework.
+
+Team/Department: ${teamName}
+Goals:
+${goalsText}
+
+Group related goals into a single inspiring Objective with measurable Key Results.
+
+Return ONLY valid JSON (no markdown):
+{
+  "objective": "A qualitative, inspiring objective statement",
+  "keyResults": [
+    {
+      "description": "what we will achieve",
+      "metric": "what we measure",
+      "baseline": "current state",
+      "target": "end state",
+      "unit": "%, units, days, etc."
+    }
+  ],
+  "alignedThemes": ["Strategic theme 1", "Strategic theme 2"]
+}`;
+
+  const text = await callGemini(prompt);
+  const jsonText = extractJSON(text);
+  if (!jsonText) throw new Error('Could not parse OKR conversion.');
+  return JSON.parse(jsonText) as OKR;
+}
+

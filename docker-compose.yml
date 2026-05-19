@@ -1,82 +1,159 @@
-version: '3.9'
 
 services:
+  # ── Reverse Proxy (public-facing) ─────────────────────────────────────────
+  nginx:
+    image: nginx:alpine
+    container_name: atomquest_nginx
+    restart: unless-stopped
+    ports:
+      - '80:80'
+      - '443:443'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - certbot_www:/var/www/certbot:ro
+      - certbot_certs:/etc/letsencrypt:ro
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - atomquest_network
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
+
+  # ── PostgreSQL Database ───────────────────────────────────────────────────
   postgres:
     image: postgres:16-alpine
-    container_name: goal_portal_postgres
+    container_name: atomquest_postgres
     restart: unless-stopped
     environment:
-      POSTGRES_USER: goalportal
-      POSTGRES_PASSWORD: goalportal_secret
-      POSTGRES_DB: goalportal
-    ports:
-      - '5433:5432'
+      POSTGRES_USER: ${POSTGRES_USER:-goalportal}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme_in_env_file}
+      POSTGRES_DB: ${POSTGRES_DB:-goalportal}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    # NOTE: port NOT exposed to host — only accessible within Docker network
     networks:
-      - goal_portal_network
+      - atomquest_network
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U goalportal -d goalportal']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-goalportal} -d ${POSTGRES_DB:-goalportal}']
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 20s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
 
+  # ── Redis Cache ───────────────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: goal_portal_redis
+    container_name: atomquest_redis
     restart: unless-stopped
-    ports:
-      - '6379:6379'
+    command: >
+      sh -c "
+        if [ -n \"$$REDIS_PASSWORD\" ]; then
+          redis-server --appendonly yes --requirepass $$REDIS_PASSWORD
+        else
+          redis-server --appendonly yes
+        fi
+      "
     volumes:
       - redis_data:/data
+    # NOTE: port NOT exposed to host — only accessible within Docker network
     networks:
-      - goal_portal_network
+      - atomquest_network
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
 
+  # ── Backend API ───────────────────────────────────────────────────────────
   backend:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: goal_portal_backend
+    container_name: atomquest_backend
     restart: unless-stopped
-    ports:
-      - '8000:8000'
+    # NOTE: port NOT exposed to host — Nginx proxies to this container
+    expose:
+      - '3000'
     env_file:
-      - ./backend/.env
+      - ./backend/.env.production
     environment:
-      DATABASE_URL: postgresql://goalportal:goalportal_secret@postgres:5432/goalportal
-      REDIS_URL: redis://redis:6379
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-goalportal}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-goalportal}
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     networks:
-      - goal_portal_network
+      - atomquest_network
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/api/health || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '5'
 
+  # ── Frontend (React SPA served via Nginx) ─────────────────────────────────
   frontend:
     build:
       context: ./frontend
-    container_name: goal_portal_frontend
+      args:
+        # Vite build-time vars — baked into the JS bundle at build time.
+        # Set these in the root .env file on the server.
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-/api}
+        VITE_GEMINI_API_KEY: ${VITE_GEMINI_API_KEY:-}
+        VITE_AAD_CLIENT_ID: ${VITE_AAD_CLIENT_ID:-}
+        VITE_AAD_TENANT_ID: ${VITE_AAD_TENANT_ID:-}
+        VITE_AAD_REDIRECT_URI: ${VITE_AAD_REDIRECT_URI:-}
+    container_name: atomquest_frontend
     restart: unless-stopped
-    ports:
-      - '80:80'
+    # NOTE: port NOT exposed to host — reverse-proxy Nginx routes to this
+    expose:
+      - '80'
     depends_on:
       - backend
     networks:
-      - goal_portal_network
+      - atomquest_network
+    logging:
+      driver: 'json-file'
+      options:
+        max-size: '10m'
+        max-file: '3'
 
+# ── Named Volumes ─────────────────────────────────────────────────────────────
 volumes:
   postgres_data:
     driver: local
-
   redis_data:
     driver: local
+  certbot_www:
+    driver: local
+  certbot_certs:
+    driver: local
 
+# ── Network ───────────────────────────────────────────────────────────────────
 networks:
-  goal_portal_network:
+  atomquest_network:
     driver: bridge

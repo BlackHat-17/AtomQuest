@@ -1,219 +1,285 @@
-# Deployment Guide
+# AWS EC2 Deployment Guide — AtomQuest
 
-This guide covers deploying the GoalTrack application with the backend on Render and frontend on Vercel.
+## Architecture
+
+```
+Internet (port 80/443)
+        │
+        ▼
+  [EC2 Security Group]
+        │
+        ▼
+  [Nginx Container]  ←─── reverse proxy + rate limiting
+     ├── /api/*  ──────►  [Backend Container :3000]
+     │                         │
+     │                    [Prisma ORM]
+     │                         │
+     │                    [PostgreSQL :5432] (internal only)
+     │                    [Redis :6379]      (internal only)
+     │
+     └── /*  ────────►  [Frontend Container :80]  (React SPA)
+```
+
+> **Note**: PostgreSQL and Redis ports are **not** exposed to the host — they are only reachable inside the Docker network. Only ports 80 and 443 are public.
+
+---
 
 ## Prerequisites
 
-1. **GitHub Repository**: Push your code to a GitHub repository
-2. **Render Account**: Sign up at [render.com](https://render.com)
-3. **Vercel Account**: Sign up at [vercel.com](https://vercel.com)
+| Requirement | Details |
+|---|---|
+| EC2 Instance | Ubuntu 22.04 LTS, **t3.small** or larger recommended |
+| Security Group | Inbound: 22 (SSH), 80 (HTTP), 443 (HTTPS) |
+| Key Pair | Your `.pem` key (stored **outside** this repo) |
+| GitHub | Repo must be accessible from EC2 |
 
-## Backend Deployment on Render
+---
 
-### Option 1: Using render.yaml (Recommended)
+## Part 1: First-Time EC2 Setup
 
-1. **Connect Repository**:
-   - Go to [Render Dashboard](https://dashboard.render.com)
-   - Click "New" → "Blueprint"
-   - Connect your GitHub repository
-   - Render will automatically detect the `render.yaml` file
-
-2. **Configure Environment Variables**:
-   - The database and JWT secret will be auto-generated
-   - Update `CORS_ORIGIN` if your frontend URL differs
-   - Add optional variables (Azure AD, Gemini API, SMTP) as needed
-
-### Option 2: Manual Setup
-
-1. **Create PostgreSQL Database**:
-   - Go to Render Dashboard
-   - Click "New" → "PostgreSQL"
-   - Name: `goaltrack-db`
-   - Plan: Free
-   - Copy the connection string
-
-2. **Create Web Service**:
-   - Click "New" → "Web Service"
-   - Connect your GitHub repository
-   - Configure:
-     - **Name**: `goaltrack-backend`
-     - **Environment**: Node
-     - **Build Command**: `cd backend && npm ci && npm run build`
-     - **Start Command**: `cd backend && npm start`
-     - **Plan**: Free
-
-3. **Set Environment Variables**:
-   ```
-   NODE_ENV=production
-   PORT=3000
-   DATABASE_URL=<your-postgres-connection-string>
-   JWT_SECRET=<generate-a-secure-random-string>
-   CORS_ORIGIN=https://goaltrack-frontend.vercel.app
-   FRONTEND_URL=https://goaltrack-frontend.vercel.app
-   ```
-
-4. **Deploy**:
-   - Click "Create Web Service"
-   - Wait for deployment to complete
-   - Note your backend URL (e.g., `https://goaltrack-backend.onrender.com`)
-
-## Frontend Deployment on Vercel
-
-### Option 1: Using Vercel CLI (Recommended)
-
-1. **Install Vercel CLI**:
-   ```bash
-   npm install -g vercel
-   ```
-
-2. **Login to Vercel**:
-   ```bash
-   vercel login
-   ```
-
-3. **Deploy**:
-   ```bash
-   vercel --prod
-   ```
-
-4. **Configure Environment Variables**:
-   - Go to [Vercel Dashboard](https://vercel.com/dashboard)
-   - Select your project
-   - Go to Settings → Environment Variables
-   - Add:
-     ```
-     VITE_API_BASE_URL=https://goaltrack-backend.onrender.com/api
-     ```
-
-### Option 2: GitHub Integration
-
-1. **Connect Repository**:
-   - Go to [Vercel Dashboard](https://vercel.com/dashboard)
-   - Click "New Project"
-   - Import your GitHub repository
-
-2. **Configure Build Settings**:
-   - **Framework Preset**: Vite
-   - **Root Directory**: `frontend`
-   - **Build Command**: `npm run build`
-   - **Output Directory**: `dist`
-   - **Install Command**: `npm ci`
-
-3. **Set Environment Variables**:
-   ```
-   VITE_API_BASE_URL=https://goaltrack-backend.onrender.com/api
-   ```
-
-4. **Deploy**:
-   - Click "Deploy"
-   - Wait for deployment to complete
-
-## Post-Deployment Setup
-
-### 1. Database Migration
-
-After backend deployment, run database migrations:
+### Step 1 — SSH into EC2
 
 ```bash
-# Connect to your Render service terminal or use a local connection
-npx prisma migrate deploy
-npx prisma db seed
+chmod 400 atomquest.pem
+ssh -i atomquest.pem ubuntu@<EC2_PUBLIC_IP>
 ```
 
-### 2. Update CORS Settings
+### Step 2 — Run the Bootstrap Script
 
-Ensure your backend CORS settings include your actual frontend URL:
+```bash
+# Clone the repo first (replace with your actual GitHub URL)
+git clone https://github.com/YOUR_ORG/AtomQuest.git /opt/atomquest
+cd /opt/atomquest
+
+# Run the one-time setup (installs Docker, configures firewall)
+chmod +x scripts/ec2-setup.sh
+./scripts/ec2-setup.sh
+```
+
+> After the script runs, **log out and log back in** so Docker group permissions take effect:
+> ```bash
+> exit
+> ssh -i atomquest.pem ubuntu@<EC2_PUBLIC_IP>
+> ```
+
+### Step 3 — Configure Environment Variables
+
+```bash
+cd /opt/atomquest
+
+# Copy the EC2 example env file
+cp backend/.env.ec2.example backend/.env.production
+
+# Edit it and fill in all <...> placeholders
+nano backend/.env.production
+```
+
+**Required values to fill in:**
 
 ```env
-CORS_ORIGIN=https://your-actual-frontend-url.vercel.app
+POSTGRES_PASSWORD=<strong-password>          # e.g., openssl rand -base64 24
+REDIS_PASSWORD=<strong-password>
+JWT_SECRET=<48-char-random>                  # openssl rand -base64 48
+JWT_REFRESH_SECRET=<48-char-random>          # openssl rand -base64 48
+FRONTEND_URL=http://<EC2_PUBLIC_IP>
 ```
 
-### 3. Test the Application
+Generate secrets:
+```bash
+openssl rand -base64 48   # run twice for JWT_SECRET and JWT_REFRESH_SECRET
+```
 
-1. Visit your frontend URL
-2. Try logging in with seeded credentials
-3. Test key functionality across different user roles
+### Step 4 — Update Frontend API URL
+
+Edit `frontend/.env.production` and replace the placeholder:
+```env
+VITE_API_BASE_URL=http://<EC2_PUBLIC_IP>/api
+```
+
+---
+
+## Part 2: Deploy
+
+```bash
+cd /opt/atomquest
+chmod +x scripts/ec2-deploy.sh
+./scripts/ec2-deploy.sh
+```
+
+The script will:
+1. ✅ Validate your `.env.production` file
+2. ✅ Pull latest code
+3. ✅ Build all Docker images
+4. ✅ Start all services
+5. ✅ Wait for backend to become healthy
+6. ✅ Run database migrations automatically
+7. ✅ Print service status and health check
+
+### Verify Deployment
+
+```bash
+# Check all containers are running
+docker compose ps
+
+# View logs
+docker compose logs -f backend
+docker compose logs -f nginx
+
+# Test health endpoint
+curl http://<EC2_PUBLIC_IP>/api/health
+```
+
+Expected response:
+```json
+{"status":"ok","timestamp":"...","uptime":42}
+```
+
+### Seed the Database (first deploy only)
+
+```bash
+docker compose exec backend npx prisma db seed
+```
+
+---
+
+## Part 3: Enable HTTPS / SSL (Recommended)
+
+### Prerequisites
+- You must have a **domain name** with an A record pointing to your EC2 public IP
+- Port 80 must be open (used for ACME challenge)
+
+### Step 1 — Obtain Certificate
+
+```bash
+cd /opt/atomquest
+export DOMAIN=yourdomain.com
+export EMAIL=admin@yourdomain.com
+chmod +x nginx/certbot-init.sh
+./nginx/certbot-init.sh
+```
+
+### Step 2 — Enable HTTPS in Nginx Config
+
+Edit `nginx/nginx.conf`:
+1. Replace `your-domain.com` with your actual domain
+2. Uncomment the `return 301 https://...` redirect in the HTTP block
+3. Comment out the HTTP-only proxy blocks
+4. Uncomment the entire `server { listen 443 ssl ...` block
+
+### Step 3 — Update Environment Variables
+
+```bash
+# backend/.env.production
+FRONTEND_URL=https://yourdomain.com
+
+# frontend/.env.production
+VITE_API_BASE_URL=https://yourdomain.com/api
+```
+
+### Step 4 — Redeploy with SSL Compose Override
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d --build
+```
+
+Certbot will automatically renew the certificate every 12 hours.
+
+---
+
+## Part 4: Subsequent Deploys
+
+After the first setup, deploying updates is just:
+
+```bash
+# Run from your local machine:
+ssh -i atomquest.pem ubuntu@<EC2_PUBLIC_IP> "cd /opt/atomquest && ./scripts/ec2-deploy.sh"
+```
+
+Or SSH in and run manually:
+```bash
+cd /opt/atomquest
+./scripts/ec2-deploy.sh
+```
+
+---
 
 ## Environment Variables Reference
 
-### Backend (Render)
+### Backend (`backend/.env.production`)
 
 | Variable | Required | Description |
-|----------|----------|-------------|
-| `NODE_ENV` | Yes | Set to `production` |
-| `PORT` | Yes | Set to `3000` |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `JWT_SECRET` | Yes | Secure random string for JWT signing |
-| `CORS_ORIGIN` | Yes | Frontend URL for CORS |
-| `FRONTEND_URL` | Yes | Frontend URL for redirects |
-| `AZURE_AD_CLIENT_ID` | No | Azure AD app client ID |
-| `AZURE_AD_CLIENT_SECRET` | No | Azure AD app client secret |
-| `AZURE_AD_TENANT_ID` | No | Azure AD tenant ID |
-| `GEMINI_API_KEY` | No | Google Gemini API key |
-| `SMTP_HOST` | No | Email server host |
-| `SMTP_PORT` | No | Email server port |
-| `SMTP_USER` | No | Email username |
-| `SMTP_PASS` | No | Email password |
-| `FROM_EMAIL` | No | From email address |
+|---|---|---|
+| `NODE_ENV` | Yes | `production` |
+| `PORT` | Yes | `3000` (internal port) |
+| `POSTGRES_USER` | Yes | DB username (default: `goalportal`) |
+| `POSTGRES_PASSWORD` | Yes | DB password — use a strong random value |
+| `POSTGRES_DB` | Yes | DB name (default: `goalportal`) |
+| `REDIS_PASSWORD` | Recommended | Redis password |
+| `JWT_SECRET` | Yes | 48+ char random string |
+| `JWT_REFRESH_SECRET` | Yes | 48+ char random string |
+| `FRONTEND_URL` | Yes | Your EC2 IP or domain with protocol |
+| `AAD_TENANT_ID` | No | Azure AD SSO |
+| `AAD_CLIENT_ID` | No | Azure AD SSO |
+| `AAD_CLIENT_SECRET` | No | Azure AD SSO |
+| `SMTP_HOST` | No | Email notifications |
+| `GEMINI_API_KEY` | No | AI features |
 
-### Frontend (Vercel)
+### Frontend (`frontend/.env.production`)
 
 | Variable | Required | Description |
-|----------|----------|-------------|
-| `VITE_API_BASE_URL` | Yes | Backend API URL |
-| `VITE_AAD_CLIENT_ID` | No | Azure AD app client ID |
-| `VITE_AAD_TENANT_ID` | No | Azure AD tenant ID |
-| `VITE_GEMINI_API_KEY` | No | Google Gemini API key |
+|---|---|---|
+| `VITE_API_BASE_URL` | Yes | `http://<EC2_IP>/api` or `https://<DOMAIN>/api` |
+| `VITE_AAD_CLIENT_ID` | No | Azure AD SSO |
+| `VITE_AAD_TENANT_ID` | No | Azure AD SSO |
+| `VITE_GEMINI_API_KEY` | No | AI features |
+
+---
+
+## Monitoring & Maintenance
+
+### View Logs
+```bash
+# All services
+docker compose logs -f
+
+# Specific service
+docker compose logs -f backend
+docker compose logs -f nginx
+docker compose logs -f postgres
+```
+
+### Restart a Service
+```bash
+docker compose restart backend
+```
+
+### Database Access
+```bash
+# Open Prisma Studio (requires port forwarding)
+docker compose exec backend npx prisma studio
+
+# Connect to PostgreSQL directly
+docker compose exec postgres psql -U goalportal -d goalportal
+```
+
+### Disk Space
+```bash
+# Check Docker disk usage
+docker system df
+
+# Clean up dangling images
+docker image prune -f
+```
+
+---
 
 ## Troubleshooting
 
-### Common Issues
-
-1. **CORS Errors**: Ensure `CORS_ORIGIN` matches your frontend URL exactly
-2. **Database Connection**: Verify `DATABASE_URL` is correct and accessible
-3. **Build Failures**: Check that all dependencies are in `package.json`
-4. **Environment Variables**: Ensure all required variables are set
-
-### Logs
-
-- **Render**: View logs in the Render dashboard under your service
-- **Vercel**: View logs in the Vercel dashboard under your project
-
-### Health Checks
-
-- Backend health: `https://your-backend-url.onrender.com/api/health`
-- Frontend: Visit your frontend URL and check browser console
-
-## Scaling Considerations
-
-### Free Tier Limitations
-
-- **Render**: 
-  - 750 hours/month compute time
-  - Services sleep after 15 minutes of inactivity
-  - 1GB RAM, 0.5 CPU
-
-- **Vercel**:
-  - 100GB bandwidth/month
-  - 6,000 build minutes/month
-  - Unlimited static requests
-
-### Upgrading
-
-For production use, consider upgrading to paid plans for:
-- Always-on services (no sleep)
-- More compute resources
-- Better performance
-- Custom domains
-- Advanced analytics
-
-## Security Checklist
-
-- [ ] Strong JWT secret generated
-- [ ] Database credentials secured
-- [ ] CORS properly configured
-- [ ] HTTPS enforced
-- [ ] Environment variables not exposed in client
-- [ ] API rate limiting considered
-- [ ] Input validation in place
-- [ ] SQL injection protection (Prisma handles this)
+| Issue | Solution |
+|---|---|
+| 502 Bad Gateway | Backend container not healthy — `docker compose logs backend` |
+| 404 on React route refresh | Nginx SPA config applied — should be fixed automatically |
+| DB connection refused | Wait for postgres healthcheck — `docker compose ps` |
+| CORS errors | Verify `FRONTEND_URL` in `.env.production` matches exact origin |
+| Rate limit errors (429) | Expected if testing rapidly — `NODE_ENV` must be `production` for limits to apply |
+| Container won't start | Check `docker compose logs <service>` for startup errors |

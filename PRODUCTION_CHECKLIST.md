@@ -1,152 +1,117 @@
-# Production Deployment Checklist
+# Production Deployment Checklist — AWS EC2
 
-Use this checklist to ensure a successful production deployment.
-
-## Pre-Deployment
+## Pre-Deployment (Local)
 
 ### Code Preparation
-- [ ] All features tested locally
-- [ ] No console.log statements in production code
-- [ ] Environment variables properly configured
-- [ ] Database migrations ready
-- [ ] Build process tested locally
-- [ ] Git repository up to date
+- [ ] All features tested locally (`npm run dev` in backend + frontend)
+- [ ] TypeScript compiles without errors (`npm run type-check` in backend)
+- [ ] Backend builds successfully (`npm run build` in backend)
+- [ ] Frontend builds successfully (`npm run build` in frontend)
+- [ ] Git repository up to date (`git push`)
+- [ ] No `.env` files committed (verify with `git status`)
+- [ ] No `.pem` files committed (verify with `git status`)
 
 ### Security
-- [ ] Strong JWT secret generated (32+ characters)
-- [ ] Database credentials secured
-- [ ] CORS origins properly configured
-- [ ] No sensitive data in environment files committed to Git
-- [ ] API rate limiting considered
-- [ ] Input validation in place
-
-## Backend Deployment (Render)
-
-### Database Setup
-- [ ] PostgreSQL database created on Render
-- [ ] Database connection string obtained
-- [ ] Database migrations planned
-
-### Service Configuration
-- [ ] Web service created and connected to GitHub
-- [ ] Build command configured: `cd backend && npm ci && npm run build`
-- [ ] Start command configured: `cd backend && npm start`
-- [ ] Health check endpoint working: `/api/health`
-
-### Environment Variables
-- [ ] `NODE_ENV=production`
-- [ ] `PORT=3000`
-- [ ] `DATABASE_URL` set to PostgreSQL connection string
-- [ ] `JWT_SECRET` generated and set
-- [ ] `CORS_ORIGIN` set to frontend URL
-- [ ] `FRONTEND_URL` set to frontend URL
-- [ ] Optional variables configured (Azure AD, Gemini, SMTP)
-
-### Post-Deployment
-- [ ] Service deployed successfully
-- [ ] Health check endpoint responding
-- [ ] Database migrations run: `npx prisma migrate deploy`
-- [ ] Database seeded: `npx prisma db seed`
-- [ ] API endpoints responding correctly
-
-## Frontend Deployment (Vercel)
-
-### Project Setup
-- [ ] GitHub repository connected to Vercel
-- [ ] Build settings configured
-- [ ] Root directory set to `frontend`
-- [ ] Build command: `npm run build`
-- [ ] Output directory: `dist`
-
-### Environment Variables
-- [ ] `VITE_API_BASE_URL` set to backend URL
-- [ ] Optional variables configured (Azure AD, Gemini)
-
-### Post-Deployment
-- [ ] Frontend deployed successfully
-- [ ] Application loads without errors
-- [ ] API calls working (check browser network tab)
-- [ ] Authentication flow working
-- [ ] All major features functional
-
-## Testing
-
-### Functional Testing
-- [ ] Login/logout working
-- [ ] User roles (Employee, Manager, Admin) working
-- [ ] Goal creation and management
-- [ ] Achievement logging
-- [ ] Manager approval workflows
-- [ ] Admin analytics and reports
-- [ ] AI features (if enabled)
-
-### Performance Testing
-- [ ] Page load times acceptable
-- [ ] API response times reasonable
-- [ ] Database queries optimized
-- [ ] No memory leaks observed
-
-### Cross-Browser Testing
-- [ ] Chrome/Chromium
-- [ ] Firefox
-- [ ] Safari (if applicable)
-- [ ] Edge
-- [ ] Mobile browsers
-
-## Monitoring & Maintenance
-
-### Monitoring Setup
-- [ ] Error tracking configured
-- [ ] Performance monitoring in place
-- [ ] Database monitoring enabled
-- [ ] Uptime monitoring configured
-
-### Backup Strategy
-- [ ] Database backup strategy defined
-- [ ] Backup restoration tested
-- [ ] Data retention policy established
-
-### Documentation
-- [ ] Deployment process documented
-- [ ] Environment variables documented
-- [ ] Troubleshooting guide created
-- [ ] User documentation updated
-
-## Go-Live
-
-### Final Checks
-- [ ] All checklist items completed
-- [ ] Stakeholders notified
-- [ ] Support team briefed
-- [ ] Rollback plan prepared
-
-### Launch
-- [ ] DNS updated (if using custom domain)
-- [ ] SSL certificates configured
-- [ ] CDN configured (if applicable)
-- [ ] Users notified of new system
-
-### Post-Launch
-- [ ] Monitor for errors and performance issues
-- [ ] Collect user feedback
-- [ ] Address any immediate issues
-- [ ] Plan for future updates and maintenance
-
-## Troubleshooting
-
-### Common Issues
-- **CORS Errors**: Check `CORS_ORIGIN` environment variable
-- **Database Connection**: Verify `DATABASE_URL` and network access
-- **Build Failures**: Check dependencies and build commands
-- **Authentication Issues**: Verify JWT secret and token handling
-- **API Errors**: Check backend logs and environment variables
-
-### Support Contacts
-- Backend Issues: Check Render service logs
-- Frontend Issues: Check Vercel deployment logs
-- Database Issues: Check Render PostgreSQL logs
-- General Issues: Check application logs and browser console
+- [ ] Strong JWT secret generated (48+ characters): `openssl rand -base64 48`
+- [ ] Strong JWT refresh secret generated (48+ characters)
+- [ ] Strong PostgreSQL password set
+- [ ] Strong Redis password set
+- [ ] `FRONTEND_URL` in `.env.production` matches exact EC2 IP/domain
+- [ ] Rate limiting is active (`NODE_ENV=production` in env file)
 
 ---
 
-**Note**: Keep this checklist updated as the application evolves and new requirements emerge.
+## EC2 Instance Setup
+
+### AWS Console
+- [ ] EC2 instance launched (Ubuntu 22.04 LTS, t3.small or larger)
+- [ ] Security Group configured:
+  - [ ] Port 22 (SSH) open to your IP
+  - [ ] Port 80 (HTTP) open to 0.0.0.0/0
+  - [ ] Port 443 (HTTPS) open to 0.0.0.0/0 (if using SSL)
+- [ ] Elastic IP associated (optional but recommended — prevents IP changes on restart)
+
+### First-Time Bootstrap
+- [ ] SSH into EC2 successfully
+- [ ] `scripts/ec2-setup.sh` executed
+- [ ] Logged out and back in (Docker group permissions)
+- [ ] `backend/.env.production` filled in (no `<...>` placeholders remain)
+- [ ] `frontend/.env.production` `VITE_API_BASE_URL` updated with EC2 IP/domain
+
+---
+
+## Deployment
+
+### Docker Services
+- [ ] `./scripts/ec2-deploy.sh` runs without errors
+- [ ] All containers show as healthy: `docker compose ps`
+  - [ ] `atomquest_postgres` — healthy
+  - [ ] `atomquest_redis` — healthy
+  - [ ] `atomquest_backend` — healthy
+  - [ ] `atomquest_frontend` — running
+  - [ ] `atomquest_nginx` — running
+
+### Database
+- [ ] Migrations applied (`prisma migrate deploy` in deploy script output)
+- [ ] Database seeded (`docker compose exec backend npx prisma db seed`) — first deploy only
+
+### Verification
+- [ ] Health check: `curl http://<EC2_IP>/api/health` returns `{"status":"ok",...}`
+- [ ] Frontend loads in browser: `http://<EC2_IP>`
+- [ ] Login works
+- [ ] Goal creation works
+- [ ] Manager approval flow works
+- [ ] Admin panel accessible
+
+---
+
+## SSL/HTTPS Setup (if using a domain)
+
+- [ ] Domain A record pointing to EC2 Elastic IP
+- [ ] DNS propagated (check with `nslookup yourdomain.com`)
+- [ ] `nginx/certbot-init.sh` executed successfully
+- [ ] `nginx/nginx.conf` updated:
+  - [ ] HTTP block redirects to HTTPS
+  - [ ] HTTPS server block uncommented
+  - [ ] Domain name replaced (both blocks)
+- [ ] `FRONTEND_URL` updated to `https://yourdomain.com`
+- [ ] `VITE_API_BASE_URL` updated to `https://yourdomain.com/api`
+- [ ] Redeployed: `docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d --build`
+- [ ] `https://yourdomain.com` loads with valid SSL certificate
+- [ ] HTTP redirects to HTTPS
+
+---
+
+## Post-Launch Monitoring
+
+- [ ] `docker compose logs -f` shows no errors after 5 minutes of use
+- [ ] Response times acceptable (check browser Network tab)
+- [ ] No 502/500 errors in nginx logs
+- [ ] Disk space acceptable: `df -h` and `docker system df`
+
+### Recommended Monitoring Tools (future)
+- [ ] AWS CloudWatch for EC2 metrics (CPU, memory, disk)
+- [ ] Uptime monitoring (UptimeRobot, Better Uptime — free tier available)
+- [ ] Log aggregation (optional: Datadog, Logtail)
+
+---
+
+## Rollback Plan
+
+If deployment fails:
+```bash
+# Roll back to previous git commit
+git log --oneline -5
+git checkout <previous-commit-hash>
+./scripts/ec2-deploy.sh
+```
+
+Or restore from the last working Docker image:
+```bash
+docker compose down
+docker compose up -d   # uses last built images if no --build flag
+```
+
+---
+
+**Keep this checklist updated as the application evolves.**

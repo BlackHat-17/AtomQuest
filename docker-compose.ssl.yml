@@ -1,0 +1,30 @@
+# docker-compose.ssl.yml
+# ─────────────────────────────────────────────────────────────────────────────
+# SSL override — use AFTER running nginx/certbot-init.sh to obtain certificates
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.ssl.yml up -d
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+services:
+  nginx:
+    volumes:
+      - certbot_certs:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
+
+  # Certbot renews certs every 12h (checks if renewal needed)
+  certbot:
+    image: certbot/certbot:latest
+    container_name: atomquest_certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_certs:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done"
+    networks:
+      - atomquest_network
+
+volumes:
+  certbot_certs:
+  certbot_www:
