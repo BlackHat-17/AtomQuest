@@ -529,6 +529,22 @@ See [deploy.md](./deploy.md) for comprehensive deployment instructions, environm
 - Optional: Azure AD, Gemini AI settings
 
 ### Health Checks
-
 - Backend: `https://your-backend-url.onrender.com/api/health`
 - Frontend: Visit your frontend URL
+
+
+### LIVE HOSTING
+
+```bash 
+      http://ec2-65-2-129-60.ap-south-1.compute.amazonaws.com/login
+
+      Login Credentials
+      Email: admin@demo.com
+      Password: Admin@123
+
+      Email: employee@demo.com
+      Password: Employee@123 
+
+      Email: manager@demo.com
+      Password: Manager@123
+```
