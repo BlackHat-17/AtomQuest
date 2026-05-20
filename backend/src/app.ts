@@ -58,10 +58,23 @@ export function createApp(): express.Application {
   // Security headers
   app.use(helmet());
 
-  // CORS — restrict to known frontend origin
+  // CORS — restrict to known frontend origins.
+  // FRONTEND_URL may be a comma-separated list of allowed origins, e.g.:
+  //   http://65.2.129.60,http://ec2-65-2-129-60.ap-south-1.compute.amazonaws.com
+  const rawOrigins = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+  const allowedOrigins = rawOrigins.split(',').map((o) => o.trim()).filter(Boolean);
+
   app.use(
     cors({
-      origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+      origin: (origin, callback) => {
+        // Allow requests with no origin (e.g., server-to-server, curl)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) {
+          callback(null, true);
+        } else {
+          callback(new Error(`CORS: origin '${origin}' not allowed`));
+        }
+      },
       credentials: true,
       methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],

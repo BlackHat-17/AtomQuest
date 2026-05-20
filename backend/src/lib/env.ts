@@ -22,8 +22,9 @@ const envSchema = z.object({
     .transform(Number)
     .default('3000'),
 
-  // CORS
-  FRONTEND_URL: z.string().url('FRONTEND_URL must be a valid URL'),
+  // CORS — may be a comma-separated list of allowed origins, e.g.:
+  //   http://65.2.129.60,http://ec2-65-2-129-60.ap-south-1.compute.amazonaws.com
+  FRONTEND_URL: z.string().min(1, 'FRONTEND_URL must not be empty'),
 
   // Environment
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
